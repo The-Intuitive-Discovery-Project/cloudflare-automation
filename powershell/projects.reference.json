@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "note": "Reference only. The live config is created under %APPDATA%\\TinyThorDeploy\\config.json by Setup.",
+  "projects": [
+    {
+      "name": "intuition",
+      "repo": "The-Intuitive-Discovery-Project/intuition.tinythor.cc",
+      "cloudflareType": "worker",
+      "cloudflareName": "intuition-v2",
+      "enabled": true,
+      "protected": false
+    },
+    {
+      "name": "business-site",
+      "repo": "The-Intuitive-Discovery-Project/huntersintuitiveguidance.com",
+      "cloudflareType": "worker",
+      "cloudflareName": "hunters-intuitive-guidance",
+      "enabled": true,
+      "protected": false
+    },
+    {
+      "name": "central-admin",
+      "repo": "The-Intuitive-Discovery-Project/central-admin",
+      "cloudflareType": "worker",
+      "cloudflareName": "central-admin",
+      "enabled": true,
+      "protected": true
+    },
+    {
+      "name": "marketplace",
+      "repo": "The-Intuitive-Discovery-Project/marketplace",
+      "cloudflareType": "pages",
+      "cloudflareName": "classes-guides-preview",
+      "enabled": false,
+      "protected": true
+    },
+    {
+      "name": "tinythor-links",
+      "repo": "The-Intuitive-Discovery-Project/links",
+      "cloudflareType": "unknown",
+      "cloudflareName": "",
+      "enabled": false,
+      "protected": true
+    }
+  ]
+}
