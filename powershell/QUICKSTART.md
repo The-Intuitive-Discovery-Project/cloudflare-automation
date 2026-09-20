@@ -1,10 +1,14 @@
 # Quick start
 
-This is intentionally a one-time credential setup followed by simple commands.
+## Current state
+
+Hunter has already created the Cloudflare deployment token. **Do not create another token** unless the existing token is being intentionally rotated or its permissions prove insufficient.
+
+The remaining setup is only about connecting/verifying that existing token locally and syncing it to the approved GitHub repositories when needed.
 
 ## Easiest Windows setup
 
-After the Cloudflare token is created, use either of these:
+Use either of these:
 
 - Double-click `START-HERE.bat`
 - Or open PowerShell in this folder and run:
@@ -13,7 +17,9 @@ After the Cloudflare token is created, use either of these:
 .\Bootstrap.ps1 -FullSetup
 ```
 
-The full setup checks for PowerShell 7, Git, Node.js, and GitHub CLI; installs missing tools through Windows Package Manager when possible; starts the normal GitHub CLI login if needed; launches the one-time Cloudflare credential setup; refreshes the verified project registry; discovers local project folders; audits the configuration; and syncs the approved Cloudflare credential to verified GitHub repositories.
+If the encrypted local TinyThor deployment credential is already present, FullSetup should reuse it instead of asking for the token again. If the local credential has never been stored on this Windows account, Setup may ask for the **existing** Cloudflare token once so it can encrypt it locally with Windows DPAPI. That is not a request to create a new Cloudflare token.
+
+The full setup checks for PowerShell 7, Git, Node.js, and GitHub CLI; installs missing tools through Windows Package Manager when possible; checks GitHub CLI login; refreshes the verified project registry; discovers local project folders; audits the configuration; and syncs the approved Cloudflare credential to verified GitHub repositories.
 
 It does **not** deploy a production website.
 
@@ -33,4 +39,4 @@ When a deployment is requested later, `Deploy` repeats the required backup, perf
 
 Central Admin can receive the approved credential for backup/automation use, but deployment through this manager stays disabled until complete All-in-One backup coverage is verified. Marketplace, TinyThor links, the test site, and other unverified/planned repositories remain disabled until their authoritative deployment source is confirmed.
 
-See `TOKEN-PERMISSIONS.md` before creating the Cloudflare token.
+`TOKEN-PERMISSIONS.md` is now a reference for auditing the existing token or for a future intentional rotation; it is not an instruction to create another token now.
