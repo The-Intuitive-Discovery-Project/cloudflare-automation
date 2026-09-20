@@ -93,6 +93,7 @@ function New-ProjectFromReference($r, $existing = $null) {
     cloudflareType = [string]$r.cloudflareType
     cloudflareName = [string]$r.cloudflareName
     configPath = [string]$r.configPath
+    d1Databases = @($r.d1Databases)
     status = [string]$r.status
     deployReady = [bool]$r.deployReady
     credentialSync = [bool]$r.credentialSync
@@ -116,7 +117,7 @@ function Refresh-Registry($config) {
   return $config
 }
 
-function Backup-Project($p) {
+function Backup-Project($config, $p) {
   if ([string]::IsNullOrWhiteSpace($p.localPath) -or -not (Test-Path $p.localPath)) { Fail "Local path for '$($p.name)' is not configured or does not exist." }
   $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
   $dest = Join-Path $BackupRoot "$($p.name)-$stamp"
@@ -135,6 +136,43 @@ function Backup-Project($p) {
       Write-Warn 'No .git directory found; source bundle backup was skipped.'
     }
 
+    $dbs = @($p.d1Databases)
+    if ($dbs.Count -gt 0) {
+      Require-Tool npx
+      $wranglerConfig = if ([string]::IsNullOrWhiteSpace($p.configPath)) { 'wrangler.jsonc' } else { [string]$p.configPath }
+      if (-not (Test-Path $wranglerConfig)) { Fail "Cannot back up D1 because Wrangler config was not found: $wranglerConfig" }
+      $d1Dir = Join-Path $dest 'd1'
+      New-Item -ItemType Directory -Path $d1Dir -Force | Out-Null
+      $token = Get-Token
+      $oldToken = $env:CLOUDFLARE_API_TOKEN
+      $oldAccount = $env:CLOUDFLARE_ACCOUNT_ID
+      try {
+        $env:CLOUDFLARE_API_TOKEN = $token
+        $env:CLOUDFLARE_ACCOUNT_ID = $config.cloudflareAccountId
+        foreach ($db in $dbs) {
+          if ([string]::IsNullOrWhiteSpace([string]$db)) { continue }
+          $safeName = ([string]$db -replace '[^A-Za-z0-9._-]', '_')
+          $sql = Join-Path $d1Dir "$safeName-$stamp.sql"
+          Write-Info "Exporting remote D1 database '$db' read-only..."
+          & npx --yes wrangler@latest d1 export ([string]$db) --remote --skip-confirmation --output=$sql --config $wranglerConfig
+          if ($LASTEXITCODE -ne 0) { Fail "D1 backup failed for '$db'. Deployment is blocked." }
+          if (-not (Test-Path $sql) -or (Get-Item $sql).Length -le 0) { Fail "D1 backup file for '$db' is missing or empty. Deployment is blocked." }
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $sql).Hash
+          $size = (Get-Item $sql).Length
+          @(
+            "Database: $db",
+            "Created: $(Get-Date -Format o)",
+            "Bytes: $size",
+            "SHA256: $hash"
+          ) | Set-Content (Join-Path $d1Dir "$safeName-$stamp.txt")
+        }
+      }
+      finally {
+        $env:CLOUDFLARE_API_TOKEN = $oldToken
+        $env:CLOUDFLARE_ACCOUNT_ID = $oldAccount
+      }
+    }
+
     if ($p.backupCommand) {
       Write-Info 'Running project-specific read-only backup command...'
       Invoke-Expression $p.backupCommand
@@ -146,7 +184,8 @@ function Backup-Project($p) {
       "Repository: $($p.repo)",
       "Created: $(Get-Date -Format o)",
       "Local path: $($p.localPath)",
-      "Registry status: $($p.status)"
+      "Registry status: $($p.status)",
+      "D1 databases exported: $(@($p.d1Databases) -join ', ')"
     ) | Set-Content (Join-Path $dest 'backup-manifest.txt')
   }
   finally { Pop-Location }
@@ -161,7 +200,7 @@ function Deploy-Project($config, $p) {
   if ($p.protected -and -not $Force) { Fail "Project '$($p.name)' is protected. It will not deploy without -Force." }
   if ([string]::IsNullOrWhiteSpace($p.localPath) -or -not (Test-Path $p.localPath)) { Fail "Local path for '$($p.name)' is not configured." }
 
-  $null = Backup-Project $p
+  $null = Backup-Project $config $p
   $token = Get-Token
   $oldToken = $env:CLOUDFLARE_API_TOKEN
   $oldAccount = $env:CLOUDFLARE_ACCOUNT_ID
@@ -225,7 +264,7 @@ switch ($Action) {
   }
   'List' {
     $config = Load-Config
-    $config.projects | Select-Object name,cloudflareType,deployReady,credentialSync,enabled,protected,status,localPath | Format-Table -AutoSize
+    $config.projects | Select-Object name,cloudflareType,@{N='d1';E={@($_.d1Databases).Count}},deployReady,credentialSync,enabled,protected,status,localPath | Format-Table -AutoSize
   }
   'Audit' {
     $config = Load-Config
@@ -240,7 +279,8 @@ switch ($Action) {
         $wranglerConfig = if ([string]::IsNullOrWhiteSpace($p.configPath)) { 'wrangler.jsonc' } else { $p.configPath }
         $configOk = Test-Path (Join-Path $p.localPath $wranglerConfig)
       }
-      Write-Host ("{0,-22} ready={1,-5} secrets={2,-5} enabled={3,-5} protected={4,-5} path={5,-5} config={6,-5} {7}" -f $p.name,$p.deployReady,$p.credentialSync,$p.enabled,$p.protected,$pathOk,$configOk,$p.status)
+      $d1Count = @($p.d1Databases).Count
+      Write-Host ("{0,-22} ready={1,-5} secrets={2,-5} enabled={3,-5} protected={4,-5} d1={5,-2} path={6,-5} config={7,-5} {8}" -f $p.name,$p.deployReady,$p.credentialSync,$p.enabled,$p.protected,$d1Count,$pathOk,$configOk,$p.status)
     }
   }
   'DiscoverLocal' {
@@ -275,7 +315,7 @@ switch ($Action) {
     if ([string]::IsNullOrWhiteSpace($Project)) { Fail 'Use -Project NAME.' }
     $config = Load-Config
     $p = Get-Project $config $Project
-    $null = Backup-Project $p
+    $null = Backup-Project $config $p
   }
   'SyncGitHubSecrets' {
     $config = Load-Config
@@ -306,7 +346,7 @@ switch ($Action) {
     $config = Load-Config
     $targets = @($config.projects | Where-Object { $_.deployReady -and $_.enabled -and -not $_.protected })
     if ($targets.Count -eq 0) { Fail 'No enabled, unprotected, deploy-ready projects are configured.' }
-    Write-Warn 'DeployAll will back up each target, dry-run it, and still require an explicit per-project confirmation.'
+    Write-Warn 'DeployAll will back up source and registered D1 databases for each target, dry-run it, and still require an explicit per-project confirmation.'
     foreach ($p in $targets) { Deploy-Project $config $p }
   }
 }
