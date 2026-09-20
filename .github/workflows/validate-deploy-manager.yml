@@ -42,7 +42,7 @@ jobs:
           if ($duplicates) { throw "Duplicate project names found: $($duplicates.Name -join ', ')" }
 
           foreach ($p in $cfg.projects) {
-            foreach ($field in @('name','repo','cloudflareType','status','deployReady','credentialSync','enabled','protected')) {
+            foreach ($field in @('name','repo','cloudflareType','configPath','d1Databases','status','deployReady','credentialSync','enabled','protected')) {
               if (-not ($p.PSObject.Properties.Name -contains $field)) { throw "Project '$($p.name)' is missing required field '$field'." }
             }
             if (-not $p.deployReady) {
@@ -52,6 +52,9 @@ jobs:
             if ($p.cloudflareType -eq 'worker' -and $p.deployReady -and [string]::IsNullOrWhiteSpace([string]$p.configPath)) {
               throw "Deploy-ready Worker '$($p.name)' is missing configPath."
             }
+            if ($p.d1Databases -isnot [System.Array]) {
+              throw "Project '$($p.name)' must define d1Databases as an array."
+            }
           }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
@@ -59,7 +62,7 @@ jobs:
         shell: pwsh
         run: |
           $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
-          foreach ($required in @('Backup-Project','--dry-run','deployReady','credentialSync','protected','ConvertFrom-SecureString','gh secret set','RefreshRegistry')) {
+          foreach ($required in @('Backup-Project','d1 export','Get-FileHash','--dry-run','deployReady','credentialSync','protected','ConvertFrom-SecureString','gh secret set','RefreshRegistry')) {
             if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
           }
           Write-Host 'Required safety controls are present.'
