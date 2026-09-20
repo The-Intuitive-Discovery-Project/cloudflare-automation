@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "cloudflareAccountId": "stored locally during Setup; do not commit the real value if you prefer to keep it private",
   "projects": [
     {
@@ -7,6 +7,10 @@
       "repo": "The-Intuitive-Discovery-Project/intuition.tinythor.cc",
       "cloudflareType": "worker",
       "cloudflareName": "intuition-v2",
+      "configPath": "wrangler.jsonc",
+      "status": "verified-worker-source",
+      "deployReady": true,
+      "credentialSync": true,
       "enabled": true,
       "protected": false,
       "localPath": "C:\\path\\to\\intuition.tinythor.cc",
