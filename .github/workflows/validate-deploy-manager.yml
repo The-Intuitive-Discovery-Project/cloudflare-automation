@@ -38,6 +38,13 @@ jobs:
             Write-Host "PowerShell syntax valid: $($file.Name)"
           }
 
+      - name: Run read-only status checker under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion | Write-Host
+          & './powershell/Check-Status.ps1' -SkipCloudflareCheck -SkipGitHubCheck
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Check-Status.ps1 exited with $LASTEXITCODE" }
+
       - name: Validate project reference JSON and fail-closed registry
         shell: pwsh
         run: |
@@ -118,12 +125,12 @@ jobs:
           if (-not (Test-Path './powershell/Check-Status.ps1')) { throw 'Check-Status.ps1 is missing.' }
           if (-not (Test-Path './powershell/CHECK-STATUS.bat')) { throw 'CHECK-STATUS.bat is missing.' }
           $status = Get-Content './powershell/Check-Status.ps1' -Raw
-          foreach ($required in @('wrangler@latest whoami','gh secret list','Encrypted local Cloudflare token','No production deployment')) {
-            if ($status -notmatch [regex]::Escape($required)) { throw "Status checker is missing expected read-only check: $required" }
+          foreach ($required in @('ConvertFrom-JsonCompat','wrangler@latest whoami','gh secret list','Encrypted local Cloudflare token','No production deployment')) {
+            if ($status -notmatch [regex]::Escape($required)) { throw "Status checker is missing expected read-only/compatibility check: $required" }
           }
           if ($status -match 'gh\s+secret\s+set') { throw 'Status checker must never write GitHub secrets.' }
           if ($status -match 'wrangler@latest\s+deploy|wrangler\s+deploy') { throw 'Status checker must never deploy a Worker.' }
           $statusLauncher = Get-Content './powershell/CHECK-STATUS.bat' -Raw
           if ($statusLauncher -notmatch [regex]::Escape('Check-Status.ps1')) { throw 'CHECK-STATUS.bat does not invoke Check-Status.ps1.' }
 
-          Write-Host 'Required safety, bootstrap, missing-only secret sync, deploy-token preservation, and read-only status controls are present.'
+          Write-Host 'Required safety, bootstrap, PowerShell 5.1 compatibility, missing-only secret sync, deploy-token preservation, and read-only status controls are present.'
