@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true, Position=0)]
-  [ValidateSet('Setup','Audit','List','DiscoverLocal','SetLocalPath','Backup','SyncGitHubSecrets','Deploy','DeployAll')]
+  [ValidateSet('Setup','RefreshRegistry','Audit','List','DiscoverLocal','SetLocalPath','Backup','SyncGitHubSecrets','Deploy','DeployAll')]
   [string]$Action,
   [string]$Project,
   [string]$Path,
@@ -24,14 +24,23 @@ function Ensure-StateDir {
   if (-not (Test-Path $StateDir)) { New-Item -ItemType Directory -Path $StateDir -Force | Out-Null }
 }
 
+function Require-Tool($name) {
+  if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { Fail "Required tool '$name' was not found." }
+}
+
+function Read-Reference {
+  if (-not (Test-Path $ReferencePath)) { Fail "Reference config missing: $ReferencePath" }
+  return Get-Content $ReferencePath -Raw | ConvertFrom-Json -Depth 30
+}
+
 function Load-Config {
   if (-not (Test-Path $ConfigPath)) { Fail "Setup has not been completed. Run: .\TinyThorDeploy.ps1 Setup" }
-  return Get-Content $ConfigPath -Raw | ConvertFrom-Json -Depth 20
+  return Get-Content $ConfigPath -Raw | ConvertFrom-Json -Depth 30
 }
 
 function Save-Config($config) {
   Ensure-StateDir
-  $config | ConvertTo-Json -Depth 20 | Set-Content -Path $ConfigPath -Encoding UTF8
+  $config | ConvertTo-Json -Depth 30 | Set-Content -Path $ConfigPath -Encoding UTF8
 }
 
 function Get-Token {
@@ -71,8 +80,40 @@ function Get-Project($config, $name) {
   return $p[0]
 }
 
-function Require-Tool($name) {
-  if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { Fail "Required tool '$name' was not found." }
+function New-ProjectFromReference($r, $existing = $null) {
+  $localPath = ''
+  $backupCommand = ''
+  if ($null -ne $existing) {
+    if ($existing.PSObject.Properties.Name -contains 'localPath') { $localPath = [string]$existing.localPath }
+    if ($existing.PSObject.Properties.Name -contains 'backupCommand') { $backupCommand = [string]$existing.backupCommand }
+  }
+  return [pscustomobject]@{
+    name = [string]$r.name
+    repo = [string]$r.repo
+    cloudflareType = [string]$r.cloudflareType
+    cloudflareName = [string]$r.cloudflareName
+    configPath = [string]$r.configPath
+    status = [string]$r.status
+    deployReady = [bool]$r.deployReady
+    credentialSync = [bool]$r.credentialSync
+    enabled = [bool]$r.enabled
+    protected = [bool]$r.protected
+    localPath = $localPath
+    backupCommand = $backupCommand
+  }
+}
+
+function Refresh-Registry($config) {
+  $ref = Read-Reference
+  $newProjects = @()
+  foreach ($r in $ref.projects) {
+    $existing = @($config.projects | Where-Object { $_.name -eq $r.name })
+    $old = if ($existing.Count -eq 1) { $existing[0] } else { $null }
+    $newProjects += New-ProjectFromReference $r $old
+  }
+  $config.version = [int]$ref.version
+  $config.projects = $newProjects
+  return $config
 }
 
 function Backup-Project($p) {
@@ -90,10 +131,12 @@ function Backup-Project($p) {
       if ($LASTEXITCODE -ne 0) { Fail 'Git bundle backup failed.' }
       & git rev-parse HEAD | Set-Content (Join-Path $dest 'source-commit.txt')
       & git status --short | Set-Content (Join-Path $dest 'working-tree-status.txt')
+    } else {
+      Write-Warn 'No .git directory found; source bundle backup was skipped.'
     }
 
     if ($p.backupCommand) {
-      Write-Info "Running project-specific read-only backup command..."
+      Write-Info 'Running project-specific read-only backup command...'
       Invoke-Expression $p.backupCommand
       if ($LASTEXITCODE -ne 0) { Fail "Project-specific backup failed for $($p.name)." }
     }
@@ -102,7 +145,8 @@ function Backup-Project($p) {
       "Project: $($p.name)",
       "Repository: $($p.repo)",
       "Created: $(Get-Date -Format o)",
-      "Local path: $($p.localPath)"
+      "Local path: $($p.localPath)",
+      "Registry status: $($p.status)"
     ) | Set-Content (Join-Path $dest 'backup-manifest.txt')
   }
   finally { Pop-Location }
@@ -112,6 +156,7 @@ function Backup-Project($p) {
 }
 
 function Deploy-Project($config, $p) {
+  if (-not $p.deployReady) { Fail "Project '$($p.name)' is not marked deploy-ready. Status: $($p.status)" }
   if (-not $p.enabled) { Fail "Project '$($p.name)' is disabled in the deployment manager." }
   if ($p.protected -and -not $Force) { Fail "Project '$($p.name)' is protected. It will not deploy without -Force." }
   if ([string]::IsNullOrWhiteSpace($p.localPath) -or -not (Test-Path $p.localPath)) { Fail "Local path for '$($p.name)' is not configured." }
@@ -127,18 +172,19 @@ function Deploy-Project($config, $p) {
     try {
       Require-Tool npx
       if ($p.cloudflareType -eq 'worker') {
+        $wranglerConfig = if ([string]::IsNullOrWhiteSpace($p.configPath)) { 'wrangler.jsonc' } else { $p.configPath }
+        if (-not (Test-Path $wranglerConfig)) { Fail "Expected Wrangler config was not found: $wranglerConfig" }
         Write-Info "Dry-running $($p.name)..."
-        & npx --yes wrangler@latest deploy --config wrangler.jsonc --dry-run
+        & npx --yes wrangler@latest deploy --config $wranglerConfig --dry-run
         if ($LASTEXITCODE -ne 0) { Fail 'Wrangler dry-run failed. Nothing was deployed.' }
         $confirm = Read-Host "Type DEPLOY $($p.name) to continue"
         if ($confirm -ne "DEPLOY $($p.name)") { Fail 'Deployment cancelled. Backup was kept.' }
-        & npx --yes wrangler@latest deploy --config wrangler.jsonc
+        & npx --yes wrangler@latest deploy --config $wranglerConfig
         if ($LASTEXITCODE -ne 0) { Fail 'Cloudflare deployment failed.' }
       }
-      elseif ($p.cloudflareType -eq 'pages') {
-        Fail "Pages deployment for '$($p.name)' remains intentionally disabled until its exact build/output directory is verified."
+      else {
+        Fail "Deployment type '$($p.cloudflareType)' for '$($p.name)' is not enabled. The manager fails closed for unverified targets."
       }
-      else { Fail "Unknown deployment type for '$($p.name)'." }
     }
     finally { Pop-Location }
   }
@@ -151,7 +197,6 @@ function Deploy-Project($config, $p) {
 
 switch ($Action) {
   'Setup' {
-    if (-not (Test-Path $ReferencePath)) { Fail "Reference config missing: $ReferencePath" }
     Require-Tool npx
     Ensure-StateDir
     $accountId = Read-Host 'Cloudflare Account ID'
@@ -163,23 +208,24 @@ switch ($Action) {
     if ([string]::IsNullOrWhiteSpace($plainToken)) { Fail 'Token cannot be blank.' }
     Invoke-WranglerWhoAmI $accountId $plainToken
     Store-Token $secureToken
-    $ref = Get-Content $ReferencePath -Raw | ConvertFrom-Json -Depth 20
+    $ref = Read-Reference
     $config = [pscustomobject]@{
-      version = 1
+      version = [int]$ref.version
       cloudflareAccountId = $accountId
-      projects = @($ref.projects | ForEach-Object {
-        [pscustomobject]@{
-          name=$_.name; repo=$_.repo; cloudflareType=$_.cloudflareType; cloudflareName=$_.cloudflareName
-          enabled=$_.enabled; protected=$_.protected; localPath=''; backupCommand=''
-        }
-      })
+      projects = @($ref.projects | ForEach-Object { New-ProjectFromReference $_ })
     }
     Save-Config $config
     Write-Ok 'Setup completed. Token is encrypted with Windows DPAPI for this Windows user.'
   }
+  'RefreshRegistry' {
+    $config = Load-Config
+    $config = Refresh-Registry $config
+    Save-Config $config
+    Write-Ok 'Project registry refreshed without changing the stored Cloudflare token or saved local paths.'
+  }
   'List' {
     $config = Load-Config
-    $config.projects | Select-Object name,repo,cloudflareType,cloudflareName,enabled,protected,localPath | Format-Table -AutoSize
+    $config.projects | Select-Object name,cloudflareType,deployReady,credentialSync,enabled,protected,status,localPath | Format-Table -AutoSize
   }
   'Audit' {
     $config = Load-Config
@@ -189,13 +235,19 @@ switch ($Action) {
     Write-Host "Account ID present: $(-not [string]::IsNullOrWhiteSpace($config.cloudflareAccountId))"
     foreach ($p in $config.projects) {
       $pathOk = -not [string]::IsNullOrWhiteSpace($p.localPath) -and (Test-Path $p.localPath)
-      Write-Host ("{0,-20} enabled={1,-5} protected={2,-5} path={3}" -f $p.name,$p.enabled,$p.protected,$pathOk)
+      $configOk = $true
+      if ($pathOk -and $p.deployReady -and $p.cloudflareType -eq 'worker') {
+        $wranglerConfig = if ([string]::IsNullOrWhiteSpace($p.configPath)) { 'wrangler.jsonc' } else { $p.configPath }
+        $configOk = Test-Path (Join-Path $p.localPath $wranglerConfig)
+      }
+      Write-Host ("{0,-22} ready={1,-5} secrets={2,-5} enabled={3,-5} protected={4,-5} path={5,-5} config={6,-5} {7}" -f $p.name,$p.deployReady,$p.credentialSync,$p.enabled,$p.protected,$pathOk,$configOk,$p.status)
     }
   }
   'DiscoverLocal' {
     $config = Load-Config
     $roots = @($HOME, (Join-Path $HOME 'Documents'), (Join-Path $HOME 'Desktop')) | Where-Object { Test-Path $_ } | Select-Object -Unique
     foreach ($p in $config.projects) {
+      if ([string]::IsNullOrWhiteSpace($p.repo)) { continue }
       $repoLeaf = ($p.repo -split '/')[-1]
       $matches = foreach ($root in $roots) {
         Get-ChildItem -Path $root -Directory -Depth 4 -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $repoLeaf }
@@ -231,13 +283,16 @@ switch ($Action) {
     $token = Get-Token
     & gh auth status
     if ($LASTEXITCODE -ne 0) { Fail 'GitHub CLI is not authenticated.' }
-    foreach ($p in $config.projects | Where-Object { $_.enabled -or $_.protected }) {
-      if ([string]::IsNullOrWhiteSpace($p.repo)) { continue }
+    $targets = @($config.projects | Where-Object { $_.credentialSync -and $_.deployReady -and -not [string]::IsNullOrWhiteSpace($_.repo) })
+    if ($targets.Count -eq 0) { Fail 'No credential-sync targets are registered.' }
+    foreach ($p in $targets) {
       Write-Info "Syncing Cloudflare Actions secrets to $($p.repo)..."
       $token | & gh secret set CLOUDFLARE_API_TOKEN --repo $p.repo
-      if ($LASTEXITCODE -ne 0) { Fail "Failed setting token in $($p.repo)." }
+      if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_API_TOKEN in $($p.repo)." }
+      $token | & gh secret set CLOUDFLARE_DEPLOY_TOKEN --repo $p.repo
+      if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_DEPLOY_TOKEN in $($p.repo)." }
       $config.cloudflareAccountId | & gh secret set CLOUDFLARE_ACCOUNT_ID --repo $p.repo
-      if ($LASTEXITCODE -ne 0) { Fail "Failed setting account ID in $($p.repo)." }
+      if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_ACCOUNT_ID in $($p.repo)." }
       Write-Ok "Secrets synced: $($p.repo)"
     }
   }
@@ -249,8 +304,8 @@ switch ($Action) {
   }
   'DeployAll' {
     $config = Load-Config
-    $targets = @($config.projects | Where-Object { $_.enabled -and -not $_.protected })
-    if ($targets.Count -eq 0) { Fail 'No enabled, unprotected projects are configured.' }
+    $targets = @($config.projects | Where-Object { $_.deployReady -and $_.enabled -and -not $_.protected })
+    if ($targets.Count -eq 0) { Fail 'No enabled, unprotected, deploy-ready projects are configured.' }
     Write-Warn 'DeployAll will back up each target, dry-run it, and still require an explicit per-project confirmation.'
     foreach ($p in $targets) { Deploy-Project $config $p }
   }
