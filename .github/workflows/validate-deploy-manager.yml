@@ -33,20 +33,33 @@ jobs:
           }
           Write-Host 'PowerShell syntax is valid.'
 
-      - name: Validate project reference JSON
+      - name: Validate project reference JSON and fail-closed registry
         shell: pwsh
         run: |
           $cfg = Get-Content './powershell/projects.reference.json' -Raw | ConvertFrom-Json
           if (-not $cfg.projects -or $cfg.projects.Count -lt 1) { throw 'No projects are registered.' }
           $duplicates = $cfg.projects | Group-Object name | Where-Object Count -gt 1
           if ($duplicates) { throw "Duplicate project names found: $($duplicates.Name -join ', ')" }
+
+          foreach ($p in $cfg.projects) {
+            foreach ($field in @('name','repo','cloudflareType','status','deployReady','credentialSync','enabled','protected')) {
+              if (-not ($p.PSObject.Properties.Name -contains $field)) { throw "Project '$($p.name)' is missing required field '$field'." }
+            }
+            if (-not $p.deployReady) {
+              if ($p.enabled) { throw "Unverified project '$($p.name)' must remain disabled." }
+              if ($p.credentialSync) { throw "Unverified project '$($p.name)' must not receive the shared Cloudflare token." }
+            }
+            if ($p.cloudflareType -eq 'worker' -and $p.deployReady -and [string]::IsNullOrWhiteSpace([string]$p.configPath)) {
+              throw "Deploy-ready Worker '$($p.name)' is missing configPath."
+            }
+          }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
       - name: Safety assertions
         shell: pwsh
         run: |
           $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
-          foreach ($required in @('Backup-Project','--dry-run','protected','ConvertFrom-SecureString','gh secret set')) {
+          foreach ($required in @('Backup-Project','--dry-run','deployReady','credentialSync','protected','ConvertFrom-SecureString','gh secret set','RefreshRegistry')) {
             if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
           }
           Write-Host 'Required safety controls are present.'
