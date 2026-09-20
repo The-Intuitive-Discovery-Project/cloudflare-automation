@@ -1,12 +1,16 @@
 {
-  "version": 1,
-  "note": "Reference only. The live config is created under %APPDATA%\\TinyThorDeploy\\config.json by Setup.",
+  "version": 2,
+  "note": "Reference only. The live config is created under %APPDATA%\\TinyThorDeploy\\config.json by Setup or RefreshRegistry.",
   "projects": [
     {
       "name": "intuition",
       "repo": "The-Intuitive-Discovery-Project/intuition.tinythor.cc",
       "cloudflareType": "worker",
       "cloudflareName": "intuition-v2",
+      "configPath": "wrangler.jsonc",
+      "status": "verified-worker-source",
+      "deployReady": true,
+      "credentialSync": true,
       "enabled": true,
       "protected": false
     },
@@ -15,6 +19,10 @@
       "repo": "The-Intuitive-Discovery-Project/huntersintuitiveguidance.com",
       "cloudflareType": "worker",
       "cloudflareName": "hunters-intuitive-guidance",
+      "configPath": "wrangler.jsonc",
+      "status": "verified-worker-source",
+      "deployReady": true,
+      "credentialSync": true,
       "enabled": true,
       "protected": false
     },
@@ -23,22 +31,58 @@
       "repo": "The-Intuitive-Discovery-Project/central-admin",
       "cloudflareType": "worker",
       "cloudflareName": "central-admin",
+      "configPath": "wrangler.jsonc",
+      "status": "verified-worker-source-protected",
+      "deployReady": true,
+      "credentialSync": true,
       "enabled": true,
+      "protected": true
+    },
+    {
+      "name": "intuition-test-site",
+      "repo": "The-Intuitive-Discovery-Project/intuition-test-site",
+      "cloudflareType": "static-test-repo",
+      "cloudflareName": "",
+      "configPath": "",
+      "status": "source-present-deployment-target-not-verified",
+      "deployReady": false,
+      "credentialSync": false,
+      "enabled": false,
       "protected": true
     },
     {
       "name": "marketplace",
       "repo": "The-Intuitive-Discovery-Project/marketplace",
-      "cloudflareType": "pages",
-      "cloudflareName": "classes-guides-preview",
+      "cloudflareType": "planned",
+      "cloudflareName": "",
+      "configPath": "",
+      "status": "documentation-only-no-deployable-app-source",
+      "deployReady": false,
+      "credentialSync": false,
       "enabled": false,
       "protected": true
     },
     {
       "name": "tinythor-links",
       "repo": "The-Intuitive-Discovery-Project/links",
-      "cloudflareType": "unknown",
+      "cloudflareType": "unknown-live-worker-not-backed-up",
       "cloudflareName": "",
+      "configPath": "",
+      "status": "foundation-only-authoritative-live-worker-missing",
+      "deployReady": false,
+      "credentialSync": false,
+      "enabled": false,
+      "protected": true
+    },
+    {
+      "name": "hunters-classes",
+      "repo": "The-Intuitive-Discovery-Project/hunters-classes",
+      "cloudflareType": "planned",
+      "cloudflareName": "",
+      "configPath": "",
+      "status": "empty-repository",
+      "deployReady": false,
+      "credentialSync": false,
       "enabled": false,
       "protected": true
     }
