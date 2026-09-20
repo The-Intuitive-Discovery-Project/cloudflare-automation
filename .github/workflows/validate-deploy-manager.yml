@@ -68,18 +68,38 @@ jobs:
           if (-not $admin[0].protected) { throw 'Central Admin must remain protected.' }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
-      - name: Safety, bootstrap, and read-only status assertions
+      - name: Safety, bootstrap, secret-preservation, and read-only status assertions
         shell: pwsh
         run: |
           $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
-          foreach ($required in @('Backup-Project','d1 export','Get-FileHash','--dry-run','deployReady','credentialSync','protected','ConvertFrom-SecureString','gh secret set','RefreshRegistry')) {
+          foreach ($required in @(
+            'Backup-Project',
+            'd1 export',
+            'Get-FileHash',
+            '--dry-run',
+            'deployReady',
+            'credentialSync',
+            'protected',
+            'ConvertFrom-SecureString',
+            'gh secret set',
+            'RefreshRegistry',
+            'IncludeDeployAlias',
+            'Get-GitHubSecretNames',
+            'existing CLOUDFLARE_DEPLOY_TOKEN preserved unchanged',
+            'Setup -Force'
+          )) {
             if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
           }
+
+          # The deploy alias may only be written behind the explicit IncludeDeployAlias path.
+          $aliasWrite = [regex]::Match($text, 'if \(\$IncludeDeployAlias\)[\s\S]*?gh secret set CLOUDFLARE_DEPLOY_TOKEN')
+          if (-not $aliasWrite.Success) { throw 'CLOUDFLARE_DEPLOY_TOKEN is not guarded by IncludeDeployAlias.' }
 
           $bootstrap = Get-Content './powershell/Bootstrap.ps1' -Raw
           foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit','ExistingLocalSetup')) {
             if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite/full-setup control: $required" }
           }
+          if ($bootstrap -match 'SyncGitHubSecrets\s+-IncludeDeployAlias') { throw 'Bootstrap must not overwrite deploy-token aliases automatically.' }
 
           if (-not (Test-Path './powershell/START-HERE.bat')) { throw 'START-HERE.bat is missing.' }
           $launcher = Get-Content './powershell/START-HERE.bat' -Raw
@@ -97,4 +117,4 @@ jobs:
           $statusLauncher = Get-Content './powershell/CHECK-STATUS.bat' -Raw
           if ($statusLauncher -notmatch [regex]::Escape('Check-Status.ps1')) { throw 'CHECK-STATUS.bat does not invoke Check-Status.ps1.' }
 
-          Write-Host 'Required safety, bootstrap, and read-only status controls are present.'
+          Write-Host 'Required safety, bootstrap, deploy-token preservation, and read-only status controls are present.'
