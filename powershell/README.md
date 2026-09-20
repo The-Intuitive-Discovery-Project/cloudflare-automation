@@ -2,7 +2,13 @@
 
 Work branch: `feature/unified-cloudflare-deploy-manager-2026-09-19`
 
-This work adds the safe one-time Cloudflare credential/deployment setup for Hunter's website projects. The PowerShell manager stays separate from production sites until it is reviewed and tested.
+This work adds the safe Cloudflare credential/deployment setup for Hunter's website projects. The PowerShell manager stays separate from production sites until it is reviewed and tested.
+
+## Current credential state
+
+Hunter has already created the Cloudflare deployment token. **Do not create another token** unless the existing token is intentionally rotated or its permissions prove insufficient.
+
+Central Admin is already wired to the `CLOUDFLARE_DEPLOY_TOKEN` GitHub secret for its restricted Cloudflare workflow. The remaining unified-manager work is to verify/reuse the existing token locally, audit its permissions, and sync the approved secret names to the verified repositories as needed. The token itself must never be committed here.
 
 ## Safety model
 
@@ -32,13 +38,13 @@ This work adds the safe one-time Cloudflare credential/deployment setup for Hunt
 - `hunters-classes` -> repository has no usable application source yet
 - image generator -> add as an isolated project after its repository and Worker identity are finalized
 
-See `DEPLOYMENT-INVENTORY.md` for the current evidence-based inventory and `TOKEN-PERMISSIONS.md` for the Cloudflare token permission plan.
+See `DEPLOYMENT-INVENTORY.md` for the current evidence-based inventory and `TOKEN-PERMISSIONS.md` for the permission audit reference for the existing Cloudflare token.
 
 ## PowerShell actions
 
 `Setup`, `RefreshRegistry`, `Audit`, `List`, `DiscoverLocal`, `SetLocalPath`, `Backup`, `SyncGitHubSecrets`, `Deploy`, and `DeployAll`.
 
-The one-time `Setup` asks for the Cloudflare Account ID and deployment API token, verifies the token, and encrypts it locally. `RefreshRegistry` can later add or change registered projects without asking for the Cloudflare token again and without erasing saved local paths.
+`Setup` is only for connecting/verifying the existing Cloudflare token on a Windows account that does not already have the local DPAPI-encrypted TinyThor credential. It asks for the Cloudflare Account ID and the **existing** deployment API token, verifies it, and encrypts it locally. It does not mean a new Cloudflare token needs to be created. `RefreshRegistry` can later add or change registered projects without asking for the Cloudflare token again and without erasing saved local paths.
 
 `Backup` creates a Git bundle snapshot and, for registered D1-backed Workers, exports the listed remote databases before deployment. A failed or empty D1 export blocks deployment.
 
