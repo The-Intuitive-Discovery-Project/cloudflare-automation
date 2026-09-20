@@ -80,8 +80,8 @@ if (-not $SkipCloudflareCheck) {
   Write-Info 'Cloudflare credential check'
   if (-not $config -or -not $tokenExists) {
     Write-Warn 'Skipped Cloudflare verification because the local encrypted setup is incomplete.'
-  } elseif (-not (Get-Command npx -ErrorAction SilentlyContinue)) {
-    Write-Warn 'Skipped Cloudflare verification because npx/Node.js is not installed.'
+  } elseif (-not (Get-Command npx.cmd -ErrorAction SilentlyContinue)) {
+    Write-Warn 'Skipped Cloudflare verification because npx.cmd/Node.js is not installed.'
   } else {
     $enc = Get-Content $SecretPath -Raw
     $secure = ConvertTo-SecureString $enc
@@ -95,7 +95,7 @@ if (-not $SkipCloudflareCheck) {
     try {
       $env:CLOUDFLARE_API_TOKEN = $token
       $env:CLOUDFLARE_ACCOUNT_ID = [string]$config.cloudflareAccountId
-      & npx --yes wrangler@latest whoami | Out-Host
+      & npx.cmd --yes wrangler@latest whoami | Out-Host
       if ($LASTEXITCODE -eq 0) { Write-Ok 'Existing Cloudflare token verified successfully.' }
       else { Write-Bad 'Existing Cloudflare token could not be verified with Wrangler.' }
     }
