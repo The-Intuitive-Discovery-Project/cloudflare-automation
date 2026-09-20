@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "note": "Reference only. The live config is created under %APPDATA%\\TinyThorDeploy\\config.json by Setup or RefreshRegistry.",
   "projects": [
     {
@@ -35,10 +35,10 @@
       "cloudflareName": "central-admin",
       "configPath": "wrangler.jsonc",
       "d1Databases": ["intuition-progress", "tinythor-links", "hunters-articles", "hunter-business-analytics"],
-      "status": "verified-worker-source-protected",
+      "status": "verified-worker-source-deployment-disabled-until-complete-all-in-one-backup-coverage",
       "deployReady": true,
       "credentialSync": true,
-      "enabled": true,
+      "enabled": false,
       "protected": true
     },
     {
