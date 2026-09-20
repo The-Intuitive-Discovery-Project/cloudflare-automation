@@ -18,20 +18,25 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Parse PowerShell without executing it
+      - name: Parse all PowerShell without executing it
         shell: pwsh
         run: |
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path './powershell/TinyThorDeploy.ps1'),
-            [ref]$null,
-            [ref]$errors
-          )
-          if ($errors.Count -gt 0) {
-            $errors | Format-List | Out-String | Write-Error
-            exit 1
+          $files = Get-ChildItem './powershell' -Filter '*.ps1' -File
+          if (-not $files) { throw 'No PowerShell files were found.' }
+          foreach ($file in $files) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $file.FullName,
+              [ref]$null,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              Write-Error "PowerShell parse errors in $($file.Name)"
+              $errors | Format-List | Out-String | Write-Error
+              exit 1
+            }
+            Write-Host "PowerShell syntax valid: $($file.Name)"
           }
-          Write-Host 'PowerShell syntax is valid.'
 
       - name: Validate project reference JSON and fail-closed registry
         shell: pwsh
@@ -56,6 +61,11 @@ jobs:
               throw "Project '$($p.name)' must define d1Databases as an array."
             }
           }
+
+          $admin = @($cfg.projects | Where-Object name -eq 'central-admin')
+          if ($admin.Count -ne 1) { throw 'Central Admin must be registered exactly once.' }
+          if ($admin[0].enabled) { throw 'Central Admin must remain deployment-disabled until complete All-in-One backup coverage is verified.' }
+          if (-not $admin[0].protected) { throw 'Central Admin must remain protected.' }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
       - name: Safety assertions
@@ -65,4 +75,8 @@ jobs:
           foreach ($required in @('Backup-Project','d1 export','Get-FileHash','--dry-run','deployReady','credentialSync','protected','ConvertFrom-SecureString','gh secret set','RefreshRegistry')) {
             if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
           }
-          Write-Host 'Required safety controls are present.'
+          $bootstrap = Get-Content './powershell/Bootstrap.ps1' -Raw
+          foreach ($required in @('winget','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login')) {
+            if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite control: $required" }
+          }
+          Write-Host 'Required safety and bootstrap controls are present.'
