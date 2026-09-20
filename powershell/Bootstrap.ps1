@@ -12,10 +12,17 @@ function Write-Info($m) { Write-Host "[INFO] $m" -ForegroundColor Cyan }
 function Write-Ok($m) { Write-Host "[OK]   $m" -ForegroundColor Green }
 function Write-Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
 
+$TinyThorStateDir = Join-Path $env:APPDATA 'TinyThorDeploy'
+$TinyThorTokenPath = Join-Path $TinyThorStateDir 'cloudflare-token.txt'
+$TinyThorConfigPath = Join-Path $TinyThorStateDir 'config.json'
+$ExistingLocalSetup = (Test-Path $TinyThorTokenPath) -and (Test-Path $TinyThorConfigPath)
+
 if ($FullSetup) {
   $InstallMissing = $true
   $LoginGitHub = $true
-  $RunSetup = $true
+  # Hunter already created the Cloudflare token. Only ask for that existing token
+  # when this Windows account does not yet have the DPAPI-encrypted local setup.
+  $RunSetup = -not $ExistingLocalSetup
 }
 
 if ($env:OS -ne 'Windows_NT') { throw 'TinyThor deployment bootstrap is Windows-only.' }
@@ -135,9 +142,12 @@ $manager = Join-Path $PSScriptRoot 'TinyThorDeploy.ps1'
 if (-not (Test-Path $manager)) { throw "Deployment manager was not found: $manager" }
 
 if ($RunSetup) {
-  Write-Info 'Starting one-time TinyThor Cloudflare setup...'
+  Write-Info 'Connecting/verifying Hunter''s existing Cloudflare deployment token for this Windows account...'
+  Write-Host 'Use the token that was already created; do not create a second token for this step.' -ForegroundColor Yellow
   & $manager Setup
-  if ($LASTEXITCODE -ne 0) { throw 'TinyThor Cloudflare setup did not complete successfully.' }
+  if ($LASTEXITCODE -ne 0) { throw 'TinyThor Cloudflare credential setup did not complete successfully.' }
+} elseif ($FullSetup -and $ExistingLocalSetup) {
+  Write-Ok 'Existing local encrypted Cloudflare credential setup detected. Token entry is not needed again.'
 }
 
 if ($FullSetup) {
@@ -153,12 +163,12 @@ if ($FullSetup) {
   & $manager Audit
   if ($LASTEXITCODE -ne 0) { throw 'Deployment manager audit failed.' }
 
-  Write-Info 'Syncing the approved Cloudflare credential to verified GitHub repositories...'
+  Write-Info 'Syncing the approved existing Cloudflare credential to verified GitHub repositories...'
   & $manager SyncGitHubSecrets
   if ($LASTEXITCODE -ne 0) { throw 'GitHub secret sync failed.' }
 
   Write-Host ''
-  Write-Ok 'Full one-time setup is complete.'
+  Write-Ok 'Full setup/audit is complete.'
   Write-Host 'No production site was deployed by Bootstrap.' -ForegroundColor Gray
   Write-Host 'Next safe test: .\TinyThorDeploy.ps1 Backup -Project intuition' -ForegroundColor Yellow
   exit 0
@@ -166,5 +176,5 @@ if ($FullSetup) {
 
 Write-Host ''
 Write-Ok 'Bootstrap checks complete.'
-Write-Host 'Recommended one-time command after the Cloudflare token is created:' -ForegroundColor Gray
+Write-Host 'To connect/audit Hunter''s existing Cloudflare token, run:' -ForegroundColor Gray
 Write-Host '  .\Bootstrap.ps1 -FullSetup' -ForegroundColor Yellow
