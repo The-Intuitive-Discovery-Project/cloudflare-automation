@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 4,
   "cloudflareAccountId": "stored locally during Setup; do not commit the real value if you prefer to keep it private",
   "projects": [
     {
@@ -8,6 +8,7 @@
       "cloudflareType": "worker",
       "cloudflareName": "intuition-v2",
       "configPath": "wrangler.jsonc",
+      "d1Databases": ["intuition-progress"],
       "status": "verified-worker-source",
       "deployReady": true,
       "credentialSync": true,
