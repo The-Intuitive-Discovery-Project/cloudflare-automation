@@ -8,8 +8,9 @@ Updated: 2026-09-20
 - Do **not** ask Hunter to create another Cloudflare token unless the current token is intentionally being rotated or a permission audit proves it cannot perform a required operation.
 - Existing safe-preview workflows already use the GitHub secret name `CLOUDFLARE_DEPLOY_TOKEN`.
 - Intuition and business-site safe previews use that deploy-token secret for Cloudflare Pages preview operations, so it must not be overwritten casually.
-- Normal `SyncGitHubSecrets` now writes/updates `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` while preserving any existing `CLOUDFLARE_DEPLOY_TOKEN`.
-- The deploy alias changes only when `SyncGitHubSecrets -IncludeDeployAlias` is explicitly requested after permission verification.
+- Normal `SyncGitHubSecrets` is now **missing-only**: it fills a missing `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` but preserves any existing values.
+- `CLOUDFLARE_DEPLOY_TOKEN` is preserved by default. A missing alias is created only with `-IncludeDeployAlias`; replacing an existing alias requires `-IncludeDeployAlias -Force` after permission verification.
+- Existing API-token/account-ID secrets are intentionally replaced only with `SyncGitHubSecrets -Force`.
 - The token value must never be committed to GitHub or written into documentation.
 
 ## What may still need verification
@@ -20,7 +21,7 @@ Creation of the Cloudflare token and local TinyThor setup are separate states. T
 
 `Bootstrap.ps1 -FullSetup` checks for the local encrypted setup. If it already exists, token entry is skipped. If it does not exist, Hunter may be asked to enter the **existing token once** so it can be verified and encrypted locally. That does not mean a new Cloudflare token should be created.
 
-Cross-repository secret sync should be audited rather than assumed. The goal is safe reuse of the existing credential, not creation of multiple new tokens or accidental replacement of a working preview credential.
+Cross-repository secret sync should be audited rather than assumed. The goal is safe reuse of the existing credential, not creation of multiple new tokens or accidental replacement of a working credential.
 
 ## Deployment safety
 
