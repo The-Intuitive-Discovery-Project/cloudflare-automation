@@ -4,30 +4,33 @@ Audited: 2026-09-20
 
 This file records only deployment facts verified from the current GitHub repositories. Unknown targets stay disabled and do not receive the shared Cloudflare deployment token.
 
-## Verified deployable Workers
+## Verified Worker sources
 
 ### Intuition
 - Repository: `The-Intuitive-Discovery-Project/intuition.tinythor.cc`
 - Wrangler config: `wrangler.jsonc`
 - Worker name: `intuition-v2`
-- D1 binding: `intuition-progress`
+- Registered pre-deploy D1 backup: `intuition-progress`
 - Existing safe-preview workflow already uses `CLOUDFLARE_DEPLOY_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-- Registry state: deploy-ready, credential sync allowed.
+- Registry state: deploy-ready, enabled, credential sync allowed.
 
 ### Hunter's Intuitive Guidance / Articles
 - Repository: `The-Intuitive-Discovery-Project/huntersintuitiveguidance.com`
 - Wrangler config: `wrangler.jsonc`
 - Worker name: `hunters-intuitive-guidance`
-- Known D1 databases include `hunters-articles` and `hunter-business-analytics`.
+- Registered pre-deploy D1 backups: `hunters-articles`, `hunter-business-analytics`.
 - Repository contains Cloudflare deployment/maintenance workflows and a safe-preview workflow.
-- Registry state: deploy-ready, credential sync allowed.
+- Registry state: deploy-ready, enabled, credential sync allowed.
 
 ### Central Admin
 - Repository: `The-Intuitive-Discovery-Project/central-admin`
 - Wrangler config: `wrangler.jsonc`
 - Worker name: `central-admin`
-- Registry state: deploy-ready but protected; DeployAll must skip it.
-- The repository currently has a scheduled backup workflow and dedicated production deployment workflow. Production deployment remains separately guarded.
+- Worker source is verified and credential sync is allowed so its backup/automation workflows can use the unified token.
+- Known D1 bindings include `intuition-progress`, `tinythor-links`, `hunters-articles`, and `hunter-business-analytics`.
+- Its complete All-in-One backup additionally includes Marketplace data/private KV that is not yet represented by the generic deploy-manager backup registry.
+- Registry state: protected **and disabled for deployment** until complete All-in-One backup coverage is verified. `-Force` does not bypass the disabled flag.
+- The repository's dedicated production deployment workflow remains separate and guarded.
 
 ## Present but not deploy-ready
 
@@ -51,17 +54,27 @@ This file records only deployment facts verified from the current GitHub reposit
 
 ### Hunter's classes
 - Repository: `The-Intuitive-Discovery-Project/hunters-classes`
-- Repository currently has no usable `main` branch/application source.
+- Repository currently has no usable application source.
 - Registry state: protected, disabled, no shared token sync.
+
+## Backup rule
+
+For an enabled Worker with registered D1 databases, `Backup` and `Deploy` first create a Git source bundle and export every listed remote D1 database. Each SQL export must be non-empty and gets SHA-256 verification metadata. A failed export blocks deployment.
+
+This generic D1 protection is sufficient for Intuition and the business site based on their currently verified bindings. Central Admin remains deployment-disabled because its broader All-in-One backup contract includes additional Marketplace/KV data.
 
 ## Credential rule
 
 `SyncGitHubSecrets` only sends the Cloudflare token to projects marked both `deployReady=true` and `credentialSync=true`. It writes both `CLOUDFLARE_API_TOKEN` and the compatibility alias `CLOUDFLARE_DEPLOY_TOKEN`, plus `CLOUDFLARE_ACCOUNT_ID`, so existing workflows can keep working while the repositories are standardized gradually.
+
+See `TOKEN-PERMISSIONS.md` for the current least-privilege token plan.
 
 ## Next safe targets
 
 1. Finish the one-time Cloudflare token setup on Hunter's Windows PC.
 2. Run `RefreshRegistry`, `DiscoverLocal`, and `Audit`.
 3. Sync credentials only to the verified Worker repositories.
-4. Verify project-specific data backup commands before any production deployment.
-5. Add the image generator as a new isolated project only after its repository/Worker identity is finalized.
+4. Manually test `Backup -Project intuition` before the first managed deployment.
+5. Verify the business-site backup the same way.
+6. Leave Central Admin deployment disabled until the manager can reproduce its complete All-in-One backup contract.
+7. Add the image generator as a new isolated project only after its repository/Worker identity is finalized.
