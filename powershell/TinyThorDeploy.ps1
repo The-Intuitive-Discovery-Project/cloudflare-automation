@@ -4,7 +4,8 @@ param(
   [string]$Action,
   [string]$Project,
   [string]$Path,
-  [switch]$Force
+  [switch]$Force,
+  [switch]$IncludeDeployAlias
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,6 +79,12 @@ function Get-Project($config, $name) {
   $p = @($config.projects | Where-Object { $_.name -eq $name })
   if ($p.Count -ne 1) { Fail "Project '$name' was not found or is ambiguous." }
   return $p[0]
+}
+
+function Get-GitHubSecretNames($repo) {
+  $raw = (& gh secret list --repo $repo 2>$null | Out-String)
+  if ($LASTEXITCODE -ne 0) { Fail "Could not list GitHub Actions secret names for $repo." }
+  return @($raw -split "`r?`n" | ForEach-Object { ($_ -split '\s+')[0] } | Where-Object { $_ })
 }
 
 function New-ProjectFromReference($r, $existing = $null) {
@@ -238,9 +245,16 @@ switch ($Action) {
   'Setup' {
     Require-Tool npx
     Ensure-StateDir
+    $existingConfig = $null
+    if (Test-Path $ConfigPath) {
+      try { $existingConfig = Get-Content $ConfigPath -Raw | ConvertFrom-Json -Depth 30 } catch { $existingConfig = $null }
+    }
+    if ((Test-Path $SecretPath) -and (Test-Path $ConfigPath) -and -not $Force) {
+      Fail 'Local TinyThor Cloudflare setup already exists. Use Audit/RefreshRegistry instead. Use Setup -Force only when intentionally replacing the stored credential.'
+    }
     $accountId = Read-Host 'Cloudflare Account ID'
     if ([string]::IsNullOrWhiteSpace($accountId)) { Fail 'Account ID cannot be blank.' }
-    $secureToken = Read-Host 'Cloudflare deployment API token' -AsSecureString
+    $secureToken = Read-Host 'Existing Cloudflare deployment API token' -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
     try { $plainToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
@@ -248,13 +262,22 @@ switch ($Action) {
     Invoke-WranglerWhoAmI $accountId $plainToken
     Store-Token $secureToken
     $ref = Read-Reference
+    $projects = @()
+    foreach ($r in $ref.projects) {
+      $old = $null
+      if ($existingConfig) {
+        $matches = @($existingConfig.projects | Where-Object { $_.name -eq $r.name })
+        if ($matches.Count -eq 1) { $old = $matches[0] }
+      }
+      $projects += New-ProjectFromReference $r $old
+    }
     $config = [pscustomobject]@{
       version = [int]$ref.version
       cloudflareAccountId = $accountId
-      projects = @($ref.projects | ForEach-Object { New-ProjectFromReference $_ })
+      projects = $projects
     }
     Save-Config $config
-    Write-Ok 'Setup completed. Token is encrypted with Windows DPAPI for this Windows user.'
+    Write-Ok 'Setup completed. Existing token is encrypted with Windows DPAPI for this Windows user.'
   }
   'RefreshRegistry' {
     $config = Load-Config
@@ -326,15 +349,27 @@ switch ($Action) {
     $targets = @($config.projects | Where-Object { $_.credentialSync -and $_.deployReady -and -not [string]::IsNullOrWhiteSpace($_.repo) })
     if ($targets.Count -eq 0) { Fail 'No credential-sync targets are registered.' }
     foreach ($p in $targets) {
-      Write-Info "Syncing Cloudflare Actions secrets to $($p.repo)..."
+      Write-Info "Syncing unified Cloudflare API credential to $($p.repo)..."
+      $existingNames = Get-GitHubSecretNames $p.repo
+
       $token | & gh secret set CLOUDFLARE_API_TOKEN --repo $p.repo
       if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_API_TOKEN in $($p.repo)." }
-      $token | & gh secret set CLOUDFLARE_DEPLOY_TOKEN --repo $p.repo
-      if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_DEPLOY_TOKEN in $($p.repo)." }
       $config.cloudflareAccountId | & gh secret set CLOUDFLARE_ACCOUNT_ID --repo $p.repo
       if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_ACCOUNT_ID in $($p.repo)." }
-      Write-Ok "Secrets synced: $($p.repo)"
+
+      if ($IncludeDeployAlias) {
+        Write-Warn "Explicitly updating CLOUDFLARE_DEPLOY_TOKEN in $($p.repo). Make sure this token has every permission required by that repository's preview/deploy workflows."
+        $token | & gh secret set CLOUDFLARE_DEPLOY_TOKEN --repo $p.repo
+        if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_DEPLOY_TOKEN in $($p.repo)." }
+      } elseif ('CLOUDFLARE_DEPLOY_TOKEN' -in $existingNames) {
+        Write-Ok "$($p.repo): existing CLOUDFLARE_DEPLOY_TOKEN preserved unchanged."
+      } else {
+        Write-Warn "$($p.repo): CLOUDFLARE_DEPLOY_TOKEN is absent. It was not created automatically because existing preview workflows may need broader Pages permissions. Re-run SyncGitHubSecrets -IncludeDeployAlias only after permission verification."
+      }
+
+      Write-Ok "Unified API token + Account ID synced: $($p.repo)"
     }
+    $token = $null
   }
   'Deploy' {
     if ([string]::IsNullOrWhiteSpace($Project)) { Fail 'Use -Project NAME.' }
