@@ -1,0 +1,52 @@
+name: Validate PowerShell Deploy Manager
+
+on:
+  pull_request:
+    paths:
+      - 'powershell/**'
+      - '.github/workflows/validate-deploy-manager.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell without executing it
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './powershell/TinyThorDeploy.ps1'),
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          Write-Host 'PowerShell syntax is valid.'
+
+      - name: Validate project reference JSON
+        shell: pwsh
+        run: |
+          $cfg = Get-Content './powershell/projects.reference.json' -Raw | ConvertFrom-Json
+          if (-not $cfg.projects -or $cfg.projects.Count -lt 1) { throw 'No projects are registered.' }
+          $duplicates = $cfg.projects | Group-Object name | Where-Object Count -gt 1
+          if ($duplicates) { throw "Duplicate project names found: $($duplicates.Name -join ', ')" }
+          Write-Host "Registered projects: $($cfg.projects.Count)"
+
+      - name: Safety assertions
+        shell: pwsh
+        run: |
+          $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
+          foreach ($required in @('Backup-Project','--dry-run','protected','ConvertFrom-SecureString','gh secret set')) {
+            if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
+          }
+          Write-Host 'Required safety controls are present.'
