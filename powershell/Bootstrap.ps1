@@ -20,8 +20,6 @@ $ExistingLocalSetup = (Test-Path $TinyThorTokenPath) -and (Test-Path $TinyThorCo
 if ($FullSetup) {
   $InstallMissing = $true
   $LoginGitHub = $true
-  # Hunter already created the Cloudflare token. Only ask for that existing token
-  # when this Windows account does not yet have the DPAPI-encrypted local setup.
   $RunSetup = -not $ExistingLocalSetup
 }
 
@@ -51,8 +49,6 @@ function Relaunch-InPowerShell7 {
   exit $LASTEXITCODE
 }
 
-# The deployment manager intentionally targets PowerShell 7. Bootstrap itself can be
-# launched from legacy Windows PowerShell and will install/relaunch PowerShell 7.
 if ($PSVersionTable.PSEdition -ne 'Core') {
   $pwsh = Get-PwshPath
   if (-not [string]::IsNullOrWhiteSpace($pwsh)) {
@@ -80,7 +76,7 @@ if (-not $IsWindows) { throw 'TinyThor deployment bootstrap is Windows-only.' }
 
 $requirements = @(
   [pscustomobject]@{ Name='Git'; Command='git'; WingetId='Git.Git' },
-  [pscustomobject]@{ Name='Node.js / npx'; Command='npx'; WingetId='OpenJS.NodeJS.LTS' },
+  [pscustomobject]@{ Name='Node.js / npx'; Command='npx.cmd'; WingetId='OpenJS.NodeJS.LTS' },
   [pscustomobject]@{ Name='GitHub CLI'; Command='gh'; WingetId='GitHub.cli' }
 )
 
@@ -112,7 +108,6 @@ if ($missing.Count -gt 0) {
     if ($LASTEXITCODE -ne 0) { throw "winget failed while installing $($r.Name)." }
   }
 
-  # Refresh PATH for commands installed by winget without requiring the user to guess.
   $machinePath = [Environment]::GetEnvironmentVariable('Path','Machine')
   $userPath = [Environment]::GetEnvironmentVariable('Path','User')
   $env:Path = "$machinePath;$userPath"
@@ -139,12 +134,15 @@ if ($LoginGitHub) {
 }
 
 $manager = Join-Path $PSScriptRoot 'TinyThorDeploy.ps1'
+$localSetup = Join-Path $PSScriptRoot 'Setup-Local.ps1'
 if (-not (Test-Path $manager)) { throw "Deployment manager was not found: $manager" }
+if (-not (Test-Path $localSetup)) { throw "Local Cloudflare setup helper was not found: $localSetup" }
 
 if ($RunSetup) {
-  Write-Info 'Connecting/verifying Hunter''s existing Cloudflare deployment token for this Windows account...'
+  Write-Info 'Connecting/verifying Hunter''s existing Cloudflare token for this Windows account...'
   Write-Host 'Use the token that was already created; do not create a second token for this step.' -ForegroundColor Yellow
-  & $manager Setup
+  Write-Host 'The Cloudflare Account ID will be discovered automatically from that token.' -ForegroundColor Gray
+  & $localSetup
   if ($LASTEXITCODE -ne 0) { throw 'TinyThor Cloudflare credential setup did not complete successfully.' }
 } elseif ($FullSetup -and $ExistingLocalSetup) {
   Write-Ok 'Existing local encrypted Cloudflare credential setup detected. Token entry is not needed again.'
@@ -163,7 +161,7 @@ if ($FullSetup) {
   & $manager Audit
   if ($LASTEXITCODE -ne 0) { throw 'Deployment manager audit failed.' }
 
-  Write-Info 'Syncing the approved existing Cloudflare credential to verified GitHub repositories...'
+  Write-Info 'Filling only missing approved Cloudflare GitHub secrets; existing values are preserved.'
   & $manager SyncGitHubSecrets
   if ($LASTEXITCODE -ne 0) { throw 'GitHub secret sync failed.' }
 
