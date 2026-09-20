@@ -6,9 +6,13 @@ This work adds the safe Cloudflare credential/deployment setup for Hunter's webs
 
 ## Current credential state
 
-Hunter has already created the Cloudflare deployment token. **Do not create another token** unless the existing token is intentionally rotated or its permissions prove insufficient.
+Hunter has already created the Cloudflare automation/deployment token. **Do not create another token** unless the existing token is intentionally rotated or its permissions prove insufficient.
 
-Central Admin is already wired to the `CLOUDFLARE_DEPLOY_TOKEN` GitHub secret for its restricted Cloudflare workflow. The remaining unified-manager work is to verify/reuse the existing token locally, audit its permissions, and sync the approved secret names to the verified repositories as needed. The token itself must never be committed here.
+Some existing GitHub workflows already use the secret name `CLOUDFLARE_DEPLOY_TOKEN`. In particular, Intuition and business-site safe-preview workflows use that secret for Cloudflare Pages preview operations. Because those workflows can need broader permissions than ordinary Worker backup/deploy operations, the unified manager now **preserves an existing `CLOUDFLARE_DEPLOY_TOKEN` instead of overwriting it automatically**.
+
+The unified token is synced as `CLOUDFLARE_API_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID`. The deploy-token alias is changed only when `SyncGitHubSecrets -IncludeDeployAlias` is explicitly used after its permissions are verified.
+
+The token itself must never be committed here.
 
 ## Safety model
 
@@ -17,9 +21,10 @@ Central Admin is already wired to the `CLOUDFLARE_DEPLOY_TOKEN` GitHub secret fo
 - Never commit Cloudflare tokens, passwords, or private credentials.
 - Store the local Cloudflare token with Windows DPAPI for the current Windows user.
 - Send GitHub Actions secrets through `gh secret set` standard input instead of putting secrets on a command line or in a repo file.
+- Preserve existing `CLOUDFLARE_DEPLOY_TOKEN` secrets unless an explicit alias update is requested after permission review.
 - Require explicit confirmation before deployment.
 - `DeployAll` skips protected, disabled, and non-deploy-ready projects.
-- Only repositories explicitly marked `credentialSync=true` and `deployReady=true` receive the shared Cloudflare token.
+- Only repositories explicitly marked `credentialSync=true` and `deployReady=true` receive the unified API token.
 - Central Admin receives credentials for its backup/automation workflows but deployment through this manager is disabled until complete All-in-One backup coverage is verified.
 - Marketplace, TinyThor links, the test site, and empty/planned repositories fail closed until their authoritative deployment source is verified.
 - Unknown/new projects start disabled and protected.
@@ -44,10 +49,12 @@ See `DEPLOYMENT-INVENTORY.md` for the current evidence-based inventory and `TOKE
 
 `Setup`, `RefreshRegistry`, `Audit`, `List`, `DiscoverLocal`, `SetLocalPath`, `Backup`, `SyncGitHubSecrets`, `Deploy`, and `DeployAll`.
 
-`Setup` is only for connecting/verifying the existing Cloudflare token on a Windows account that does not already have the local DPAPI-encrypted TinyThor credential. It asks for the Cloudflare Account ID and the **existing** deployment API token, verifies it, and encrypts it locally. It does not mean a new Cloudflare token needs to be created. `RefreshRegistry` can later add or change registered projects without asking for the Cloudflare token again and without erasing saved local paths.
+`Setup` is only for connecting/verifying the existing Cloudflare token on a Windows account that does not already have the local DPAPI-encrypted TinyThor credential. It refuses to replace an existing local setup unless `Setup -Force` is deliberately used. A forced credential replacement preserves known local project paths.
 
 `Backup` creates a Git bundle snapshot and, for registered D1-backed Workers, exports the listed remote databases before deployment. A failed or empty D1 export blocks deployment.
 
-`SyncGitHubSecrets` sends the token only to verified deployment repositories. It writes both `CLOUDFLARE_API_TOKEN` and the compatibility alias `CLOUDFLARE_DEPLOY_TOKEN`, plus `CLOUDFLARE_ACCOUNT_ID`, so existing workflows can keep working while secret names are standardized gradually.
+`SyncGitHubSecrets` sends the unified token only to verified deployment repositories. By default it writes `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` and leaves any existing `CLOUDFLARE_DEPLOY_TOKEN` unchanged. Use `SyncGitHubSecrets -IncludeDeployAlias` only when intentionally making the unified token serve the preview/deploy alias too, after confirming it has every permission those workflows require.
+
+`CHECK-STATUS.bat` is the read-only first step: it checks local setup, Cloudflare token verification, project paths, GitHub login, and expected secret names without changing secrets or deploying anything.
 
 Production Worker deployment remains source/data backup -> Wrangler dry-run -> exact typed confirmation -> deploy. Unsupported, disabled, protected, or unverified targets fail closed.
