@@ -85,6 +85,8 @@ jobs:
             'RefreshRegistry',
             'IncludeDeployAlias',
             'Get-GitHubSecretNames',
+            'existing CLOUDFLARE_API_TOKEN preserved unchanged',
+            'existing CLOUDFLARE_ACCOUNT_ID preserved unchanged',
             'existing CLOUDFLARE_DEPLOY_TOKEN preserved unchanged',
             'Setup -Force'
           )) {
@@ -95,11 +97,18 @@ jobs:
           $aliasWrite = [regex]::Match($text, 'if \(\$IncludeDeployAlias\)[\s\S]*?gh secret set CLOUDFLARE_DEPLOY_TOKEN')
           if (-not $aliasWrite.Success) { throw 'CLOUDFLARE_DEPLOY_TOKEN is not guarded by IncludeDeployAlias.' }
 
+          # Existing API/account secrets must be preserved unless Force is deliberately used.
+          foreach ($secret in @('CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID')) {
+            $pattern = "if \(\`$Force -or '$secret' -notin \`$existingNames\)"
+            if ($text -notmatch $pattern) { throw "$secret is not protected by missing-only / Force sync logic." }
+          }
+
           $bootstrap = Get-Content './powershell/Bootstrap.ps1' -Raw
           foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit','ExistingLocalSetup')) {
             if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite/full-setup control: $required" }
           }
           if ($bootstrap -match 'SyncGitHubSecrets\s+-IncludeDeployAlias') { throw 'Bootstrap must not overwrite deploy-token aliases automatically.' }
+          if ($bootstrap -match 'SyncGitHubSecrets\s+-Force') { throw 'Bootstrap must not force-replace existing GitHub Cloudflare secrets.' }
 
           if (-not (Test-Path './powershell/START-HERE.bat')) { throw 'START-HERE.bat is missing.' }
           $launcher = Get-Content './powershell/START-HERE.bat' -Raw
@@ -117,4 +126,4 @@ jobs:
           $statusLauncher = Get-Content './powershell/CHECK-STATUS.bat' -Raw
           if ($statusLauncher -notmatch [regex]::Escape('Check-Status.ps1')) { throw 'CHECK-STATUS.bat does not invoke Check-Status.ps1.' }
 
-          Write-Host 'Required safety, bootstrap, deploy-token preservation, and read-only status controls are present.'
+          Write-Host 'Required safety, bootstrap, missing-only secret sync, deploy-token preservation, and read-only status controls are present.'
