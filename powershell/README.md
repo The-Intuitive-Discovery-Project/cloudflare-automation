@@ -7,21 +7,22 @@ This work adds the safe one-time Cloudflare credential/deployment setup for Hunt
 ## Safety model
 
 - Back up before any deployment.
+- For registered D1-backed Workers, export the remote D1 databases read-only before deployment, verify the export is non-empty, and record a SHA-256 hash.
 - Never commit Cloudflare tokens, passwords, or private credentials.
 - Store the local Cloudflare token with Windows DPAPI for the current Windows user.
 - Send GitHub Actions secrets through `gh secret set` standard input instead of putting secrets on a command line or in a repo file.
 - Require explicit confirmation before deployment.
-- `DeployAll` skips protected and non-deploy-ready projects.
+- `DeployAll` skips protected, disabled, and non-deploy-ready projects.
 - Only repositories explicitly marked `credentialSync=true` and `deployReady=true` receive the shared Cloudflare token.
-- Central Admin stays protected.
+- Central Admin receives credentials for its backup/automation workflows but deployment through this manager is disabled until complete All-in-One backup coverage is verified.
 - Marketplace, TinyThor links, the test site, and empty/planned repositories fail closed until their authoritative deployment source is verified.
 - Unknown/new projects start disabled and protected.
 
-## Verified deployable targets
+## Verified Worker sources
 
-- `intuition` -> repo `The-Intuitive-Discovery-Project/intuition.tinythor.cc` -> Worker `intuition-v2`
-- `business-site` -> repo `The-Intuitive-Discovery-Project/huntersintuitiveguidance.com` -> Worker `hunters-intuitive-guidance`
-- `central-admin` -> repo `The-Intuitive-Discovery-Project/central-admin` -> Worker `central-admin` (protected)
+- `intuition` -> repo `The-Intuitive-Discovery-Project/intuition.tinythor.cc` -> Worker `intuition-v2` -> deploy enabled
+- `business-site` -> repo `The-Intuitive-Discovery-Project/huntersintuitiveguidance.com` -> Worker `hunters-intuitive-guidance` -> deploy enabled
+- `central-admin` -> repo `The-Intuitive-Discovery-Project/central-admin` -> Worker `central-admin` -> credential sync allowed, deployment disabled/protected pending complete backup coverage
 
 ## Registered but intentionally not deployable
 
@@ -31,7 +32,7 @@ This work adds the safe one-time Cloudflare credential/deployment setup for Hunt
 - `hunters-classes` -> repository has no usable application source yet
 - image generator -> add as an isolated project after its repository and Worker identity are finalized
 
-See `DEPLOYMENT-INVENTORY.md` for the current evidence-based inventory.
+See `DEPLOYMENT-INVENTORY.md` for the current evidence-based inventory and `TOKEN-PERMISSIONS.md` for the Cloudflare token permission plan.
 
 ## PowerShell actions
 
@@ -39,6 +40,8 @@ See `DEPLOYMENT-INVENTORY.md` for the current evidence-based inventory.
 
 The one-time `Setup` asks for the Cloudflare Account ID and deployment API token, verifies the token, and encrypts it locally. `RefreshRegistry` can later add or change registered projects without asking for the Cloudflare token again and without erasing saved local paths.
 
+`Backup` creates a Git bundle snapshot and, for registered D1-backed Workers, exports the listed remote databases before deployment. A failed or empty D1 export blocks deployment.
+
 `SyncGitHubSecrets` sends the token only to verified deployment repositories. It writes both `CLOUDFLARE_API_TOKEN` and the compatibility alias `CLOUDFLARE_DEPLOY_TOKEN`, plus `CLOUDFLARE_ACCOUNT_ID`, so existing workflows can keep working while secret names are standardized gradually.
 
-Production Worker deployment remains backup -> Wrangler dry-run -> exact typed confirmation -> deploy. Unsupported or unverified deployment types fail closed.
+Production Worker deployment remains source/data backup -> Wrangler dry-run -> exact typed confirmation -> deploy. Unsupported, disabled, protected, or unverified targets fail closed.
