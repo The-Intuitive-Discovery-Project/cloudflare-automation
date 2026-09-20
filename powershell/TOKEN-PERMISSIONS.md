@@ -4,67 +4,69 @@ Verified against Cloudflare documentation on 2026-09-20.
 
 ## Current state — token already exists
 
-Hunter has already created the Cloudflare deployment token. This file is now a **permission reference/audit checklist**, not an instruction to create another token. Do not create a replacement token unless the existing token is intentionally being rotated or a required permission is missing.
+Hunter has already created the Cloudflare automation/deployment token. This file is a **permission reference/audit checklist**, not an instruction to create another token. Do not create a replacement token unless the existing token is intentionally being rotated or a required permission is missing.
 
-The deployment manager is designed around one account-owned Cloudflare API token. Keep the existing token narrow enough to avoid unnecessary write access, but broad enough to perform the operations the manager actually uses.
+There is also an important compatibility rule: existing Intuition and business-site safe-preview workflows use the GitHub secret name `CLOUDFLARE_DEPLOY_TOKEN` for Cloudflare Pages preview work. The unified manager therefore preserves an existing deploy-token secret by default instead of blindly replacing it.
 
-## Required now
+## Required for the unified API token
 
 ### Workers
 
 For the current verified Workers, grant **Workers product -> Editor** if the token only needs to update/deploy Workers that already exist.
 
-If the same existing token should also create brand-new Workers later (for example, the isolated image-generator Worker), **Workers product -> Admin** is required. Cloudflare currently requires product-level Admin to create a new Worker; Editor can deploy/update existing Workers but cannot create or delete them.
-
-The current manager does not delete Workers.
+If the same existing token should also create brand-new Workers later (for example, the isolated image-generator Worker), **Workers product -> Admin** is required. The current manager does not delete Workers.
 
 ### D1 backups
 
 Grant **D1 -> Content Read-Only** in the current Developer Platform role model so the manager can export registered databases before deployment.
 
-Cloudflare's D1 HTTP API documents this underlying permission as **D1 Read**. D1 Write/Edit is not required for the manager's backup flow and should not be granted merely for backups.
-
-The manager only calls read/export operations during its pre-deploy backup step. Any failed or empty export blocks deployment.
+D1 Write/Edit is not required for the manager's backup flow and should not be granted merely for backups. Any failed or empty export blocks deployment.
 
 ### Workers KV backup compatibility
 
-Central Admin's complete All-in-One backup also needs read access to its private KV data. Grant **KV -> Content Read-Only** when that backup is enabled with the unified token. Cloudflare's KV HTTP API calls the underlying accepted permission **Workers KV Storage Read**.
+Central Admin's complete All-in-One backup also needs read access to its private KV data. Grant **KV -> Content Read-Only** when that backup is enabled with the unified token.
 
 Do not grant KV write access just to perform backups.
 
-## Only when needed
+## Additional permissions only when the same token actually performs these jobs
 
 ### Routes / Custom Domains
 
-If a deployment is allowed to add, change, or remove a Worker Route or Custom Domain, Cloudflare requires the Worker permission plus **Workers Routes Write** on every affected zone.
+If a deployment is allowed to add, change, or remove a Worker Route or Custom Domain, the token needs the appropriate route/custom-domain permission for the affected zone. The currently enabled Intuition and business-site deployments should not receive route-changing power unless a verified deployment path actually requires it. Central Admin remains deployment-disabled in this manager for now.
 
-The currently enabled Intuition and business-site deployments should not be given zone-route power unless their verified Wrangler configuration actually needs to change a route. Central Admin remains deployment-disabled in this manager for now.
+### Pages / safe previews
 
-### Pages
+The existing Intuition and business-site safe-preview workflows use `CLOUDFLARE_DEPLOY_TOKEN` to verify/create the dedicated preview Pages project and deploy isolated Pages previews. Therefore, **do not replace an existing `CLOUDFLARE_DEPLOY_TOKEN` with the unified token unless the unified token has the Pages permissions those workflows require**.
 
-Cloudflare Pages uses Pages-specific API-token roles. Grant **Pages Write** only when a verified Pages project is intentionally added to this manager. Marketplace is not currently a verified Pages deployment target and receives no token from this manager.
+Marketplace is not currently a verified Pages deployment target in this manager.
 
-## Target permission profile for the existing token
+## Safe target profile
 
-For the single durable token used by Hunter's automation, the target permissions are:
+For the unified API token used directly by this manager:
 
 - Workers product: **Admin** if future isolated Workers should be creatable; otherwise Editor is enough for existing Workers
 - D1 product: **Content Read-Only** / D1 Read
-- KV product: **Content Read-Only** / Workers KV Storage Read
-- Workers Routes Write: **do not add until a verified project actually needs route/custom-domain changes**
-- Pages Write: **do not add until a verified Pages project is registered**
+- KV product: **Content Read-Only** / Workers KV Storage Read when Central Admin backup coverage uses this token
+- Route/custom-domain write: do not add until a verified project actually needs it
+- Pages permissions: needed only if this same token will intentionally replace the existing deploy-token alias used by safe previews
 
-This keeps database and KV backup access read-only and avoids unnecessary route, D1-write, KV-write, or Pages permissions.
+This keeps database and KV backup access read-only and avoids granting unrelated write capabilities just for convenience.
 
-## GitHub secret names
+## GitHub secret names and preservation rule
 
-After local Setup/verification, `SyncGitHubSecrets` stores the same existing Cloudflare token under both names below for compatibility with existing workflows:
+Normal `SyncGitHubSecrets` writes the unified credential as:
 
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_DEPLOY_TOKEN`
-
-It also stores the non-secret Cloudflare account identifier as:
-
 - `CLOUDFLARE_ACCOUNT_ID`
+
+If a repository already has `CLOUDFLARE_DEPLOY_TOKEN`, the manager leaves it untouched. If that alias is missing, the manager warns instead of creating it automatically.
+
+Only an explicit:
+
+```powershell
+.\TinyThorDeploy.ps1 SyncGitHubSecrets -IncludeDeployAlias
+```
+
+updates/creates `CLOUDFLARE_DEPLOY_TOKEN` with the unified token. Use that switch only after verifying the unified token can satisfy all preview/deploy permissions required by that repository.
 
 The token value itself is never committed to a repository.
