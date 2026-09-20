@@ -75,7 +75,7 @@ jobs:
           if (-not $admin[0].protected) { throw 'Central Admin must remain protected.' }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
-      - name: Safety, bootstrap, secret-preservation, and read-only status assertions
+      - name: Safety, bootstrap, secret-preservation, and setup assertions
         shell: pwsh
         run: |
           $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
@@ -100,22 +100,28 @@ jobs:
             if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
           }
 
-          # The deploy alias may only be written behind the explicit IncludeDeployAlias path.
           $aliasWrite = [regex]::Match($text, 'if \(\$IncludeDeployAlias\)[\s\S]*?gh secret set CLOUDFLARE_DEPLOY_TOKEN')
           if (-not $aliasWrite.Success) { throw 'CLOUDFLARE_DEPLOY_TOKEN is not guarded by IncludeDeployAlias.' }
 
-          # Existing API/account secrets must be preserved unless Force is deliberately used.
           foreach ($secret in @('CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID')) {
             $pattern = "if \(\`$Force -or '$secret' -notin \`$existingNames\)"
             if ($text -notmatch $pattern) { throw "$secret is not protected by missing-only / Force sync logic." }
           }
 
           $bootstrap = Get-Content './powershell/Bootstrap.ps1' -Raw
-          foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit','ExistingLocalSetup')) {
+          foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit','ExistingLocalSetup','Setup-Local.ps1','npx.cmd')) {
             if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite/full-setup control: $required" }
           }
           if ($bootstrap -match 'SyncGitHubSecrets\s+-IncludeDeployAlias') { throw 'Bootstrap must not overwrite deploy-token aliases automatically.' }
           if ($bootstrap -match 'SyncGitHubSecrets\s+-Force') { throw 'Bootstrap must not force-replace existing GitHub Cloudflare secrets.' }
+
+          if (-not (Test-Path './powershell/Setup-Local.ps1')) { throw 'Setup-Local.ps1 is missing.' }
+          $localSetup = Get-Content './powershell/Setup-Local.ps1' -Raw
+          foreach ($required in @('Existing Cloudflare API token','client/v4/accounts?per_page=50','npx.cmd','ConvertFrom-SecureString','Cloudflare Account ID was discovered','No website was deployed')) {
+            if ($localSetup -notmatch [regex]::Escape($required)) { throw "Local setup helper is missing expected control: $required" }
+          }
+          if ($localSetup -match 'wrangler@latest\s+deploy|wrangler\s+deploy') { throw 'Local setup helper must never deploy a Worker.' }
+          if ($localSetup -match 'gh\s+secret\s+set') { throw 'Local setup helper must never change GitHub secrets.' }
 
           if (-not (Test-Path './powershell/START-HERE.bat')) { throw 'START-HERE.bat is missing.' }
           $launcher = Get-Content './powershell/START-HERE.bat' -Raw
@@ -125,7 +131,7 @@ jobs:
           if (-not (Test-Path './powershell/Check-Status.ps1')) { throw 'Check-Status.ps1 is missing.' }
           if (-not (Test-Path './powershell/CHECK-STATUS.bat')) { throw 'CHECK-STATUS.bat is missing.' }
           $status = Get-Content './powershell/Check-Status.ps1' -Raw
-          foreach ($required in @('ConvertFrom-JsonCompat','wrangler@latest whoami','gh secret list','Encrypted local Cloudflare token','No production deployment')) {
+          foreach ($required in @('ConvertFrom-JsonCompat','npx.cmd','wrangler@latest whoami','gh secret list','Encrypted local Cloudflare token','No production deployment')) {
             if ($status -notmatch [regex]::Escape($required)) { throw "Status checker is missing expected read-only/compatibility check: $required" }
           }
           if ($status -match 'gh\s+secret\s+set') { throw 'Status checker must never write GitHub secrets.' }
@@ -133,4 +139,4 @@ jobs:
           $statusLauncher = Get-Content './powershell/CHECK-STATUS.bat' -Raw
           if ($statusLauncher -notmatch [regex]::Escape('Check-Status.ps1')) { throw 'CHECK-STATUS.bat does not invoke Check-Status.ps1.' }
 
-          Write-Host 'Required safety, bootstrap, PowerShell 5.1 compatibility, missing-only secret sync, deploy-token preservation, and read-only status controls are present.'
+          Write-Host 'Required backup, secret-preservation, account-discovery, npx.cmd, PowerShell 5.1 status, and fail-closed controls are present.'
