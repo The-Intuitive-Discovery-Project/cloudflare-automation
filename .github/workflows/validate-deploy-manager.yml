@@ -68,7 +68,7 @@ jobs:
           if (-not $admin[0].protected) { throw 'Central Admin must remain protected.' }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
-      - name: Safety and bootstrap assertions
+      - name: Safety, bootstrap, and read-only status assertions
         shell: pwsh
         run: |
           $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
@@ -77,7 +77,7 @@ jobs:
           }
 
           $bootstrap = Get-Content './powershell/Bootstrap.ps1' -Raw
-          foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit')) {
+          foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit','ExistingLocalSetup')) {
             if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite/full-setup control: $required" }
           }
 
@@ -86,4 +86,15 @@ jobs:
           if ($launcher -notmatch [regex]::Escape('-FullSetup')) { throw 'START-HERE.bat does not invoke FullSetup.' }
           if ($launcher -match 'CLOUDFLARE_API_TOKEN|CLOUDFLARE_DEPLOY_TOKEN') { throw 'START-HERE.bat must never contain a Cloudflare token value or token variable.' }
 
-          Write-Host 'Required safety and one-command bootstrap controls are present.'
+          if (-not (Test-Path './powershell/Check-Status.ps1')) { throw 'Check-Status.ps1 is missing.' }
+          if (-not (Test-Path './powershell/CHECK-STATUS.bat')) { throw 'CHECK-STATUS.bat is missing.' }
+          $status = Get-Content './powershell/Check-Status.ps1' -Raw
+          foreach ($required in @('wrangler@latest whoami','gh secret list','Encrypted local Cloudflare token','No production deployment')) {
+            if ($status -notmatch [regex]::Escape($required)) { throw "Status checker is missing expected read-only check: $required" }
+          }
+          if ($status -match 'gh\s+secret\s+set') { throw 'Status checker must never write GitHub secrets.' }
+          if ($status -match 'wrangler@latest\s+deploy|wrangler\s+deploy') { throw 'Status checker must never deploy a Worker.' }
+          $statusLauncher = Get-Content './powershell/CHECK-STATUS.bat' -Raw
+          if ($statusLauncher -notmatch [regex]::Escape('Check-Status.ps1')) { throw 'CHECK-STATUS.bat does not invoke Check-Status.ps1.' }
+
+          Write-Host 'Required safety, bootstrap, and read-only status controls are present.'
