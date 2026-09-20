@@ -14,6 +14,14 @@ function Write-Ok($m) { Write-Host "[OK]   $m" -ForegroundColor Green }
 function Write-Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
 function Write-Bad($m) { Write-Host "[MISS] $m" -ForegroundColor Red }
 
+function ConvertFrom-JsonCompat([string]$Json) {
+  $cmd = Get-Command ConvertFrom-Json -ErrorAction Stop
+  if ($cmd.Parameters.ContainsKey('Depth')) {
+    return $Json | ConvertFrom-Json -Depth 30
+  }
+  return $Json | ConvertFrom-Json
+}
+
 if ($env:OS -ne 'Windows_NT') { throw 'TinyThor status check is Windows-only.' }
 
 Write-Host ''
@@ -30,7 +38,7 @@ if ($tokenExists) { Write-Ok 'Encrypted local Cloudflare token is present.' } el
 $config = $null
 if ($configExists) {
   try {
-    $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json -Depth 30
+    $config = ConvertFrom-JsonCompat (Get-Content $ConfigPath -Raw)
     if ([string]::IsNullOrWhiteSpace([string]$config.cloudflareAccountId)) {
       Write-Bad 'Local config does not contain the Cloudflare Account ID.'
     } else {
@@ -42,7 +50,7 @@ if ($configExists) {
 }
 
 if (Test-Path $ReferencePath) {
-  $reference = Get-Content $ReferencePath -Raw | ConvertFrom-Json -Depth 30
+  $reference = ConvertFrom-JsonCompat (Get-Content $ReferencePath -Raw)
   Write-Ok "Project registry found: $(@($reference.projects).Count) project(s)."
 } else {
   $reference = $null
