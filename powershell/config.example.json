@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cloudflareAccountId": "stored locally during Setup; do not commit the real value if you prefer to keep it private",
+  "projects": [
+    {
+      "name": "intuition",
+      "repo": "The-Intuitive-Discovery-Project/intuition.tinythor.cc",
+      "cloudflareType": "worker",
+      "cloudflareName": "intuition-v2",
+      "enabled": true,
+      "protected": false,
+      "localPath": "C:\\path\\to\\intuition.tinythor.cc",
+      "backupCommand": ""
+    }
+  ]
+}
