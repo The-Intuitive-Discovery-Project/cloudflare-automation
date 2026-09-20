@@ -349,25 +349,39 @@ switch ($Action) {
     $targets = @($config.projects | Where-Object { $_.credentialSync -and $_.deployReady -and -not [string]::IsNullOrWhiteSpace($_.repo) })
     if ($targets.Count -eq 0) { Fail 'No credential-sync targets are registered.' }
     foreach ($p in $targets) {
-      Write-Info "Syncing unified Cloudflare API credential to $($p.repo)..."
+      Write-Info "Checking Cloudflare Actions secrets in $($p.repo)..."
       $existingNames = Get-GitHubSecretNames $p.repo
 
-      $token | & gh secret set CLOUDFLARE_API_TOKEN --repo $p.repo
-      if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_API_TOKEN in $($p.repo)." }
-      $config.cloudflareAccountId | & gh secret set CLOUDFLARE_ACCOUNT_ID --repo $p.repo
-      if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_ACCOUNT_ID in $($p.repo)." }
+      if ($Force -or 'CLOUDFLARE_API_TOKEN' -notin $existingNames) {
+        $token | & gh secret set CLOUDFLARE_API_TOKEN --repo $p.repo
+        if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_API_TOKEN in $($p.repo)." }
+        Write-Ok "$($p.repo): CLOUDFLARE_API_TOKEN synced."
+      } else {
+        Write-Ok "$($p.repo): existing CLOUDFLARE_API_TOKEN preserved unchanged."
+      }
+
+      if ($Force -or 'CLOUDFLARE_ACCOUNT_ID' -notin $existingNames) {
+        $config.cloudflareAccountId | & gh secret set CLOUDFLARE_ACCOUNT_ID --repo $p.repo
+        if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_ACCOUNT_ID in $($p.repo)." }
+        Write-Ok "$($p.repo): CLOUDFLARE_ACCOUNT_ID synced."
+      } else {
+        Write-Ok "$($p.repo): existing CLOUDFLARE_ACCOUNT_ID preserved unchanged."
+      }
 
       if ($IncludeDeployAlias) {
-        Write-Warn "Explicitly updating CLOUDFLARE_DEPLOY_TOKEN in $($p.repo). Make sure this token has every permission required by that repository's preview/deploy workflows."
-        $token | & gh secret set CLOUDFLARE_DEPLOY_TOKEN --repo $p.repo
-        if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_DEPLOY_TOKEN in $($p.repo)." }
+        if ('CLOUDFLARE_DEPLOY_TOKEN' -in $existingNames -and -not $Force) {
+          Write-Warn "$($p.repo): CLOUDFLARE_DEPLOY_TOKEN already exists and was preserved. Use -IncludeDeployAlias -Force only when intentionally replacing it after permission verification."
+        } else {
+          Write-Warn "Explicitly syncing CLOUDFLARE_DEPLOY_TOKEN in $($p.repo). Make sure this token has every permission required by that repository's preview/deploy workflows."
+          $token | & gh secret set CLOUDFLARE_DEPLOY_TOKEN --repo $p.repo
+          if ($LASTEXITCODE -ne 0) { Fail "Failed setting CLOUDFLARE_DEPLOY_TOKEN in $($p.repo)." }
+          Write-Ok "$($p.repo): CLOUDFLARE_DEPLOY_TOKEN synced explicitly."
+        }
       } elseif ('CLOUDFLARE_DEPLOY_TOKEN' -in $existingNames) {
         Write-Ok "$($p.repo): existing CLOUDFLARE_DEPLOY_TOKEN preserved unchanged."
       } else {
-        Write-Warn "$($p.repo): CLOUDFLARE_DEPLOY_TOKEN is absent. It was not created automatically because existing preview workflows may need broader Pages permissions. Re-run SyncGitHubSecrets -IncludeDeployAlias only after permission verification."
+        Write-Warn "$($p.repo): CLOUDFLARE_DEPLOY_TOKEN is absent. It was not created automatically because existing preview workflows may need broader Pages permissions. Use -IncludeDeployAlias only after permission verification."
       }
-
-      Write-Ok "Unified API token + Account ID synced: $($p.repo)"
     }
     $token = $null
   }
