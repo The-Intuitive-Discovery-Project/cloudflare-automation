@@ -6,7 +6,7 @@ Verified against Cloudflare documentation on 2026-09-20.
 
 Hunter has already created the Cloudflare automation/deployment token. This file is a **permission reference/audit checklist**, not an instruction to create another token. Do not create a replacement token unless the existing token is intentionally being rotated or a required permission is missing.
 
-There is also an important compatibility rule: existing Intuition and business-site safe-preview workflows use the GitHub secret name `CLOUDFLARE_DEPLOY_TOKEN` for Cloudflare Pages preview work. The unified manager therefore preserves an existing deploy-token secret by default instead of blindly replacing it.
+There is also an important compatibility rule: existing Intuition and business-site safe-preview workflows use the GitHub secret name `CLOUDFLARE_DEPLOY_TOKEN` for Cloudflare Pages preview work. The unified manager therefore preserves existing GitHub Cloudflare secret values by default instead of blindly replacing them.
 
 ## Required for the unified API token
 
@@ -54,19 +54,23 @@ This keeps database and KV backup access read-only and avoids granting unrelated
 
 ## GitHub secret names and preservation rule
 
-Normal `SyncGitHubSecrets` writes the unified credential as:
+Normal `SyncGitHubSecrets` is **missing-only**. For each approved repository it checks the existing GitHub Actions secret names first:
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
+- if `CLOUDFLARE_API_TOKEN` is missing, it adds the unified token; otherwise it preserves the existing value
+- if `CLOUDFLARE_ACCOUNT_ID` is missing, it adds the account ID; otherwise it preserves the existing value
+- it never creates or replaces `CLOUDFLARE_DEPLOY_TOKEN` by default
 
-If a repository already has `CLOUDFLARE_DEPLOY_TOKEN`, the manager leaves it untouched. If that alias is missing, the manager warns instead of creating it automatically.
-
-Only an explicit:
+Intentional replacement options are:
 
 ```powershell
-.\TinyThorDeploy.ps1 SyncGitHubSecrets -IncludeDeployAlias
-```
+# Replace existing API-token/account-ID values, but leave the deploy alias alone
+.\TinyThorDeploy.ps1 SyncGitHubSecrets -Force
 
-updates/creates `CLOUDFLARE_DEPLOY_TOKEN` with the unified token. Use that switch only after verifying the unified token can satisfy all preview/deploy permissions required by that repository.
+# Create a missing deploy alias after permission verification
+.\TinyThorDeploy.ps1 SyncGitHubSecrets -IncludeDeployAlias
+
+# Intentionally replace an existing deploy alias after permission verification
+.\TinyThorDeploy.ps1 SyncGitHubSecrets -IncludeDeployAlias -Force
+```
 
 The token value itself is never committed to a repository.
