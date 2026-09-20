@@ -68,15 +68,22 @@ jobs:
           if (-not $admin[0].protected) { throw 'Central Admin must remain protected.' }
           Write-Host "Registered projects: $($cfg.projects.Count)"
 
-      - name: Safety assertions
+      - name: Safety and bootstrap assertions
         shell: pwsh
         run: |
           $text = Get-Content './powershell/TinyThorDeploy.ps1' -Raw
           foreach ($required in @('Backup-Project','d1 export','Get-FileHash','--dry-run','deployReady','credentialSync','protected','ConvertFrom-SecureString','gh secret set','RefreshRegistry')) {
             if ($text -notmatch [regex]::Escape($required)) { throw "Missing safety control: $required" }
           }
+
           $bootstrap = Get-Content './powershell/Bootstrap.ps1' -Raw
-          foreach ($required in @('winget','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login')) {
-            if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite control: $required" }
+          foreach ($required in @('FullSetup','Microsoft.PowerShell','OpenJS.NodeJS.LTS','GitHub.cli','gh auth login','SyncGitHubSecrets','DiscoverLocal','Audit')) {
+            if ($bootstrap -notmatch [regex]::Escape($required)) { throw "Bootstrap is missing prerequisite/full-setup control: $required" }
           }
-          Write-Host 'Required safety and bootstrap controls are present.'
+
+          if (-not (Test-Path './powershell/START-HERE.bat')) { throw 'START-HERE.bat is missing.' }
+          $launcher = Get-Content './powershell/START-HERE.bat' -Raw
+          if ($launcher -notmatch [regex]::Escape('-FullSetup')) { throw 'START-HERE.bat does not invoke FullSetup.' }
+          if ($launcher -match 'CLOUDFLARE_API_TOKEN|CLOUDFLARE_DEPLOY_TOKEN') { throw 'START-HERE.bat must never contain a Cloudflare token value or token variable.' }
+
+          Write-Host 'Required safety and one-command bootstrap controls are present.'
