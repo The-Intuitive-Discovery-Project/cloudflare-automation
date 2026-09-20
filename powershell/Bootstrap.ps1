@@ -2,6 +2,7 @@ param(
   [switch]$InstallMissing,
   [switch]$RunSetup,
   [switch]$LoginGitHub,
+  [switch]$FullSetup,
   [switch]$Relaunched
 )
 
@@ -10,6 +11,12 @@ $ErrorActionPreference = 'Stop'
 function Write-Info($m) { Write-Host "[INFO] $m" -ForegroundColor Cyan }
 function Write-Ok($m) { Write-Host "[OK]   $m" -ForegroundColor Green }
 function Write-Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
+
+if ($FullSetup) {
+  $InstallMissing = $true
+  $LoginGitHub = $true
+  $RunSetup = $true
+}
 
 if ($env:OS -ne 'Windows_NT') { throw 'TinyThor deployment bootstrap is Windows-only.' }
 
@@ -25,9 +32,13 @@ function Relaunch-InPowerShell7 {
   param([string]$PwshPath)
   if ([string]::IsNullOrWhiteSpace($PwshPath)) { throw 'PowerShell 7 is not available yet.' }
   $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-Relaunched')
-  if ($InstallMissing) { $args += '-InstallMissing' }
-  if ($RunSetup) { $args += '-RunSetup' }
-  if ($LoginGitHub) { $args += '-LoginGitHub' }
+  if ($FullSetup) {
+    $args += '-FullSetup'
+  } else {
+    if ($InstallMissing) { $args += '-InstallMissing' }
+    if ($RunSetup) { $args += '-RunSetup' }
+    if ($LoginGitHub) { $args += '-LoginGitHub' }
+  }
   Write-Info 'Relaunching setup under PowerShell 7...'
   & $PwshPath @args
   exit $LASTEXITCODE
@@ -120,15 +131,40 @@ if ($LoginGitHub) {
   Write-Ok 'GitHub CLI authentication is ready.'
 }
 
+$manager = Join-Path $PSScriptRoot 'TinyThorDeploy.ps1'
+if (-not (Test-Path $manager)) { throw "Deployment manager was not found: $manager" }
+
 if ($RunSetup) {
-  $manager = Join-Path $PSScriptRoot 'TinyThorDeploy.ps1'
-  if (-not (Test-Path $manager)) { throw "Deployment manager was not found: $manager" }
   Write-Info 'Starting one-time TinyThor Cloudflare setup...'
   & $manager Setup
   if ($LASTEXITCODE -ne 0) { throw 'TinyThor Cloudflare setup did not complete successfully.' }
 }
 
+if ($FullSetup) {
+  Write-Info 'Refreshing the verified project registry...'
+  & $manager RefreshRegistry
+  if ($LASTEXITCODE -ne 0) { throw 'Project registry refresh failed.' }
+
+  Write-Info 'Looking for local project folders...'
+  & $manager DiscoverLocal
+  if ($LASTEXITCODE -ne 0) { throw 'Local project discovery failed.' }
+
+  Write-Info 'Auditing the deployment configuration...'
+  & $manager Audit
+  if ($LASTEXITCODE -ne 0) { throw 'Deployment manager audit failed.' }
+
+  Write-Info 'Syncing the approved Cloudflare credential to verified GitHub repositories...'
+  & $manager SyncGitHubSecrets
+  if ($LASTEXITCODE -ne 0) { throw 'GitHub secret sync failed.' }
+
+  Write-Host ''
+  Write-Ok 'Full one-time setup is complete.'
+  Write-Host 'No production site was deployed by Bootstrap.' -ForegroundColor Gray
+  Write-Host 'Next safe test: .\TinyThorDeploy.ps1 Backup -Project intuition' -ForegroundColor Yellow
+  exit 0
+}
+
 Write-Host ''
 Write-Ok 'Bootstrap checks complete.'
 Write-Host 'Recommended one-time command after the Cloudflare token is created:' -ForegroundColor Gray
-Write-Host '  .\Bootstrap.ps1 -InstallMissing -LoginGitHub -RunSetup' -ForegroundColor Yellow
+Write-Host '  .\Bootstrap.ps1 -FullSetup' -ForegroundColor Yellow
