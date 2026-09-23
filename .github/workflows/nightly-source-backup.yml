@@ -19,4 +19,4 @@ jobs:
     uses: ./.github/workflows/reusable-repository-backup.yml
     with:
       artifact_prefix: cloudflare-automation
-      retention_days: 30
+      retention_days: 15
