@@ -1,0 +1,22 @@
+name: Nightly Source Backup - Cloudflare Automation
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/nightly-source-backup.yml'
+      - '.github/workflows/reusable-repository-backup.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    uses: ./.github/workflows/reusable-repository-backup.yml
+    with:
+      artifact_prefix: cloudflare-automation
+      retention_days: 30
