@@ -1,0 +1,55 @@
+{
+  "ucp": {
+    "version": "2026-04-08",
+    "services": {
+      "dev.ucp.shopping": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/overview",
+          "transport": "mcp",
+          "schema": "https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json"
+        }
+      ]
+    },
+    "capabilities": {
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-04-08"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-04-08"
+        }
+      ],
+      "dev.shopify.catalog": [
+        {
+          "version": "2026-04-08"
+        }
+      ]
+    },
+    "payment_handlers": {}
+  },
+  "keys": [
+    {
+      "kid": "dealwatch-2026",
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "I-dP6I7AEPmLnOj2MEQn4OhSHRKa8nmeYmHa1jJWxOg",
+      "y": "axqKAXxCcw4J-vfQLAln0AielhDYg8WToJwT_YohHPw",
+      "use": "sig",
+      "alg": "ES256"
+    }
+  ],
+  "signing_keys": [
+    {
+      "kid": "dealwatch-2026",
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "I-dP6I7AEPmLnOj2MEQn4OhSHRKa8nmeYmHa1jJWxOg",
+      "y": "axqKAXxCcw4J-vfQLAln0AielhDYg8WToJwT_YohHPw",
+      "use": "sig",
+      "alg": "ES256"
+    }
+  ]
+}
